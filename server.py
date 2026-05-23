@@ -331,7 +331,7 @@ table {{ width: 100%; border-collapse: collapse; margin-top: 5mm; }}
 th {{ color: var(--brand); font-size: 7.5pt; text-align: right; padding: 3mm 2mm; border-bottom: 1px solid var(--line); }}
 th:nth-child(2), td:nth-child(2) {{ text-align: left; }}
 td {{ font-size: 8.5pt; text-align: right; padding: 3mm 2mm; border-bottom: 1px solid #edf0f4; }}
-.money-cell {{ display: flex; justify-content: space-between; gap: 4mm; min-width: 24mm; font-variant-numeric: tabular-nums; }}
+.money-cell {{ display: inline-flex; justify-content: flex-end; align-items: baseline; gap: .9mm; min-width: 18mm; font-variant-numeric: tabular-nums; }}
 .money-symbol {{ color: var(--ink); }}
 tbody tr:nth-child(odd) {{ background: var(--soft); }}
 body.meridian td {{ border-bottom-color: #eee4d2; }}

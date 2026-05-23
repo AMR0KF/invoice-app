@@ -1,6 +1,8 @@
 ﻿const fs = require("fs");
 const path = require("path");
-const puppeteer = require("puppeteer");
+const isVercel = !!process.env.VERCEL;
+const puppeteer = isVercel ? require("puppeteer-core") : require("puppeteer");
+const chromium = isVercel ? require("@sparticuz/chromium") : null;
 
 const BASE = __dirname;
 const OUT = process.env.INVOICE_OUTPUT_DIR || path.join(BASE, "data", "output");
@@ -138,6 +140,23 @@ function findLocalBrowser() {
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
+async function browserLaunchOptions() {
+  if (isVercel) {
+    return {
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    };
+  }
+
+  const executablePath = findLocalBrowser();
+  return {
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: true,
+    ...(executablePath ? { executablePath } : {}),
+  };
+}
+
 function renderTemplate(data) {
   const lang = ["en", "ar", "bi"].includes(data.language) ? data.language : "bi";
   const cur = data.currency === "LBP" ? "LBP" : "USD";
@@ -219,39 +238,47 @@ function renderTemplate(data) {
 
 async function buildAndSavePDF(data) {
   fs.mkdirSync(OUT, { recursive: true });
-  const html = renderTemplate(data);
   const filename = `invoice_${safeFilename(data.invoice_number)}.pdf`;
   const outPath = path.join(OUT, filename);
+  const buffer = await buildPDFBuffer(data);
+  fs.writeFileSync(outPath, buffer);
+  process.stdout.write(outPath);
+}
+
+async function buildPDFBuffer(data) {
+  const html = renderTemplate(data);
   let browser;
   try {
-    const executablePath = findLocalBrowser();
-    browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      headless: true,
-      ...(executablePath ? { executablePath } : {}),
-    });
+    browser = await puppeteer.launch(await browserLaunchOptions());
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
-    await page.pdf({
-      path: outPath,
+    return await page.pdf({
       format: "A4",
       printBackground: true,
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
-    process.stdout.write(outPath);
   } finally {
     if (browser) await browser.close();
   }
 }
 
-let raw = "";
-process.stdin.on("data", (d) => raw += d);
-process.stdin.on("end", async () => {
-  try {
-    const data = JSON.parse(raw || "{}");
-    await buildAndSavePDF(data);
-  } catch (err) {
-    process.stderr.write(err && err.stack ? err.stack : String(err));
-    process.exit(1);
-  }
-});
+module.exports = {
+  buildAndSavePDF,
+  buildPDFBuffer,
+  renderTemplate,
+  safeFilename,
+};
+
+if (require.main === module) {
+  let raw = "";
+  process.stdin.on("data", (d) => raw += d);
+  process.stdin.on("end", async () => {
+    try {
+      const data = JSON.parse(raw || "{}");
+      await buildAndSavePDF(data);
+    } catch (err) {
+      process.stderr.write(err && err.stack ? err.stack : String(err));
+      process.exit(1);
+    }
+  });
+}

@@ -1,8 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <title>Invoice Maker / صانع الفواتير</title>
 <style>
 /* ── Reset & Base ──────────────────────────────────────────────────────── */
@@ -694,7 +695,7 @@ body.show-discount td.discount-col { display: table-cell; }
 }
 .mobile-actions {
   display: grid;
-  grid-template-columns: 1.1fr .85fr .85fr;
+  grid-template-columns: 1fr;
   gap: 7px;
 }
 .mobile-action-btn {
@@ -1124,6 +1125,10 @@ body.show-discount td.discount-col { display: table-cell; }
     box-shadow: 0 -12px 30px rgba(0,0,0,.32);
     backdrop-filter: blur(10px);
   }
+  #mobile-open-btn,
+  #mobile-share-btn {
+    display: none;
+  }
   .card { overflow-x: auto; }
   .settings-panel { grid-template-columns: 1fr; max-height: calc(100vh - 54px); }
   .settings-side { min-height: 180px; max-height: 240px; border-right: 0; border-bottom: 1px solid var(--border); }
@@ -1380,7 +1385,7 @@ body.show-discount td.discount-col { display: table-cell; }
     </div>
   </div>
   <button class="gen-btn" id="gen-btn" onclick="generateInvoice()">
-    Generate Invoice (.docx) / إنشاء الفاتورة
+    Generate Invoice (PDF) / إنشاء الفاتورة
   </button>
   <button class="gen-btn pdf-btn" onclick="printPdfInvoice()">
     Print PDF preview / طباعة PDF
@@ -1427,7 +1432,7 @@ body.show-discount td.discount-col { display: table-cell; }
     <span id="mobile-pdf-status">No PDF generated yet</span>
   </div>
   <div class="mobile-actions">
-    <button class="mobile-action-btn primary" id="mobile-pdf-btn" type="button" onclick="generateMobilePdf()">Generate PDF</button>
+    <button class="mobile-action-btn primary" id="mobile-pdf-btn" type="button" onclick="generateMobilePdf()">Print PDF</button>
     <button class="mobile-action-btn" id="mobile-open-btn" type="button" onclick="openLastPdf()" disabled>Open</button>
     <button class="mobile-action-btn" id="mobile-share-btn" type="button" onclick="shareMobilePdf()" disabled>Share</button>
   </div>
@@ -1742,9 +1747,7 @@ function updateActionSummary() {
   if (mobileTotal && totalEl) mobileTotal.textContent = totalEl.textContent;
   const genBtn = document.getElementById('gen-btn');
   if (genBtn && !genBtn.disabled) {
-    genBtn.textContent = templateEl?.value === 'meridian_v2'
-      ? 'Generate Invoice (PDF) / إنشاء الفاتورة'
-      : 'Generate Invoice (.docx) / إنشاء الفاتورة';
+    genBtn.textContent = 'Generate Invoice (PDF) / إنشاء الفاتورة';
   }
 }
 
@@ -2636,12 +2639,29 @@ function pdfDownloadUrl(filename) {
   return `/api/download/${encodeURIComponent(filename)}`;
 }
 
-function setLastGeneratedPdf(filename) {
-  lastGeneratedPdf = filename ? {
-    filename,
-    url: pdfDownloadUrl(filename),
-    invoiceNumber: document.getElementById('inv-num').value.trim() || 'INV-001',
-  } : null;
+function directPdfUrl(filename) {
+  return filename ? pdfDownloadUrl(filename) : '';
+}
+
+function setLastGeneratedPdf(fileInfo) {
+  if (lastGeneratedPdf?.isObjectUrl) URL.revokeObjectURL(lastGeneratedPdf.url);
+  if (!fileInfo) {
+    lastGeneratedPdf = null;
+  } else if (typeof fileInfo === 'string') {
+    lastGeneratedPdf = {
+      filename: fileInfo,
+      url: directPdfUrl(fileInfo),
+      invoiceNumber: document.getElementById('inv-num').value.trim() || 'INV-001',
+      isObjectUrl: false,
+    };
+  } else {
+    lastGeneratedPdf = {
+      filename: fileInfo.filename,
+      url: fileInfo.url,
+      invoiceNumber: fileInfo.invoiceNumber || document.getElementById('inv-num').value.trim() || 'INV-001',
+      isObjectUrl: !!fileInfo.isObjectUrl,
+    };
+  }
 
   const status = document.getElementById('mobile-pdf-status');
   const shareBtn = document.getElementById('mobile-share-btn');
@@ -2649,6 +2669,22 @@ function setLastGeneratedPdf(filename) {
   if (status) status.textContent = filename ? filename : 'No PDF generated yet';
   if (shareBtn) shareBtn.disabled = !filename;
   if (openBtn) openBtn.disabled = !filename;
+}
+
+function filenameFromResponse(response, invoiceNumber) {
+  const explicit = response.headers.get('X-Invoice-Filename');
+  if (explicit) return explicit;
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return match ? match[1] : `invoice_${invoiceNumber || 'INV-001'}.pdf`;
+}
+
+function nextInvoiceNumber(value) {
+  const current = String(value || 'INV-001');
+  const match = current.match(/^(.*?)(\d+)$/);
+  if (!match) return 'INV-001';
+  const [, prefix, digits] = match;
+  return prefix + String(Number(digits) + 1).padStart(digits.length, '0');
 }
 
 function validateInvoiceData(data) {
@@ -2675,7 +2711,36 @@ async function generatePdfFile(options = {}) {
   }
 
   try {
-    const r = await API('POST', '/api/generate-pdf', data);
+    const response = await fetch('/api/generate-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const contentType = response.headers.get('Content-Type') || '';
+
+    if (contentType.includes('application/pdf')) {
+      const blob = await response.blob();
+      const filename = filenameFromResponse(response, data.invoice_number);
+      const url = URL.createObjectURL(blob);
+      setLastGeneratedPdf({
+        filename,
+        url,
+        invoiceNumber: data.invoice_number,
+        isObjectUrl: true,
+      });
+      if (options.download) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+      }
+      if (options.open) window.open(url, '_blank');
+      setInvoiceNumber(nextInvoiceNumber(data.invoice_number));
+      toast(`${filename} ready`, 'success');
+      return filename;
+    }
+
+    const r = await response.json();
     if (!r.ok) {
       toast('Error: ' + (r.error || 'PDF generation failed'), 'error');
       return null;
@@ -2707,7 +2772,8 @@ async function generatePdfFile(options = {}) {
 }
 
 async function generateMobilePdf() {
-  await generatePdfFile({ button: document.getElementById('mobile-pdf-btn') });
+  const filename = await generatePdfFile({ button: document.getElementById('mobile-pdf-btn') });
+  if (filename) await shareGeneratedPdf();
 }
 
 function openLastPdf() {
@@ -2759,37 +2825,8 @@ async function shareMobilePdf() {
 
 async function generateInvoice() {
   const btn  = document.getElementById('gen-btn');
-  const data = collectData();
-
-  if (!data.buyer.name) { toast('Please enter a client name', 'error'); return; }
-  if (!data.items.length) { toast('Add at least one item', 'error'); return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Generating...';
-
-  try {
-    const isMeridianV2 = data.template === 'meridian_v2';
-    const r = await API('POST', isMeridianV2 ? '/api/generate-pdf' : '/api/generate', data);
-    if (r.ok) {
-      if (isMeridianV2) setLastGeneratedPdf(r.filename);
-      // Trigger download
-      const a = document.createElement('a');
-      a.href = `/api/download/${r.filename}`;
-      a.download = r.filename;
-      a.click();
-      toast(`${r.filename} downloaded`, 'success');
-
-      setInvoiceNumber(r.next_invoice_number || document.getElementById('inv-num').value);
-    } else {
-      toast('Error: ' + (r.error || 'Generation failed'), 'error');
-    }
-  } catch (err) {
-    const timedOut = err && err.name === 'AbortError';
-    toast(timedOut ? 'Invoice generation timed out. Please try again.' : 'Server not running. Start server.py first!', 'error');
-  } finally {
-    btn.disabled = false;
-    updateActionSummary();
-  }
+  await generatePdfFile({ button: btn, download: true });
+  updateActionSummary();
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────
@@ -2805,17 +2842,8 @@ async function printPdfInvoice() {
       if (filename) await shareGeneratedPdf();
       return;
     }
-    if (data.template === 'meridian_v2') {
-      const r = await API('POST', '/api/generate-pdf', data);
-      if (!r.ok) {
-        toast('Error: ' + (r.error || 'PDF generation failed'), 'error');
-        return;
-      }
-      setLastGeneratedPdf(r.filename);
-      window.open(`/api/download/${r.filename}`, '_blank');
-      setInvoiceNumber(r.next_invoice_number || document.getElementById('inv-num').value);
-      return;
-    }
+    await generatePdfFile({ open: true });
+    return;
     const r = await API('POST', '/api/print-preview', data);
     if (r.ok && r.url) {
       window.open(r.url, '_blank');
@@ -2846,3 +2874,4 @@ recalc();
 </script>
 </body>
 </html>
+

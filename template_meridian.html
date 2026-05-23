@@ -215,12 +215,11 @@ td:nth-child(2) {
   font-variant-numeric: normal;
 }
 .amount-cell {
-  display: inline-grid;
-  grid-template-columns: 10px minmax(58px, max-content);
-  column-gap: 1ch;
-  justify-content: end;
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: .5ch;
   align-items: baseline;
-  min-width: 82px;
+  min-width: 58px;
 }
 .amount-cell .symbol {
   color: var(--ink-muted);
