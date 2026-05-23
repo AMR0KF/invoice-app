@@ -2011,7 +2011,7 @@ async function loadRemoteDocumentSettings() {
     .eq('user_id', supabaseUser.id)
     .maybeSingle();
   if (error) {
-    toast(error.message || 'Could not load Supabase settings', 'error');
+    console.warn('Supabase settings load skipped:', error.message || error);
     return;
   }
   if (!data) {
