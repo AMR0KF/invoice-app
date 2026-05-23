@@ -2711,11 +2711,7 @@ async function generatePdfFile(options = {}) {
   }
 
   try {
-    const response = await fetch('/api/generate-pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    const response = await requestPdfGeneration(data);
     const contentType = response.headers.get('Content-Type') || '';
 
     if (contentType.includes('application/pdf')) {
@@ -2761,7 +2757,7 @@ async function generatePdfFile(options = {}) {
     return r.filename;
   } catch (err) {
     const timedOut = err && err.name === 'AbortError';
-    toast(timedOut ? 'PDF generation timed out. Please try again.' : 'Server not running. Start server.py first!', 'error');
+    toast(timedOut ? 'PDF generation timed out. Please try again.' : `PDF endpoint unavailable: ${err.message || 'check connection'}`, 'error');
     return null;
   } finally {
     if (btn) {
@@ -2769,6 +2765,28 @@ async function generatePdfFile(options = {}) {
       btn.textContent = previousLabel;
     }
   }
+}
+
+async function requestPdfGeneration(data) {
+  const payload = JSON.stringify(data);
+  const endpoints = ['/api/generate-pdf', '/api/generate'];
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      });
+      if (response.ok) return response;
+      lastError = new Error(`${endpoint} returned ${response.status}`);
+    } catch (err) {
+      lastError = new Error(`${endpoint} failed`);
+    }
+  }
+
+  throw lastError || new Error('PDF generation failed');
 }
 
 async function generateMobilePdf() {
@@ -2853,7 +2871,7 @@ async function printPdfInvoice() {
     }
   } catch (err) {
     const timedOut = err && err.name === 'AbortError';
-    toast(timedOut ? 'Print preview timed out. Please try again.' : 'Server not running. Start server.py first!', 'error');
+    toast(timedOut ? 'Print preview timed out. Please try again.' : `PDF endpoint unavailable: ${err.message || 'check connection'}`, 'error');
   }
 }
 
