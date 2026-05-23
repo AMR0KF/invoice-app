@@ -2699,9 +2699,10 @@ function setLastGeneratedPdf(fileInfo) {
   const status = document.getElementById('mobile-pdf-status');
   const shareBtn = document.getElementById('mobile-share-btn');
   const openBtn = document.getElementById('mobile-open-btn');
-  if (status) status.textContent = filename ? filename : 'No PDF generated yet';
-  if (shareBtn) shareBtn.disabled = !filename;
-  if (openBtn) openBtn.disabled = !filename;
+  const activeFilename = lastGeneratedPdf?.filename || '';
+  if (status) status.textContent = activeFilename || 'No PDF generated yet';
+  if (shareBtn) shareBtn.disabled = !activeFilename;
+  if (openBtn) openBtn.disabled = !activeFilename;
 }
 
 function filenameFromResponse(response, invoiceNumber) {
@@ -2709,7 +2710,7 @@ function filenameFromResponse(response, invoiceNumber) {
   if (explicit) return explicit;
   const disposition = response.headers.get('Content-Disposition') || '';
   const match = disposition.match(/filename="?([^"]+)"?/i);
-  return match ? match[1] : `invoice_${invoiceNumber || 'INV-001'}.pdf`;
+  return match ? match[1] : `${invoiceNumber || 'INV-001'}.pdf`;
 }
 
 function nextInvoiceNumber(value) {

@@ -13,7 +13,7 @@ module.exports = async function handler(req, res) {
     data.template = "meridian_v2";
     const invoiceNumber = data.invoice_number || "INV-001";
     const pdf = await buildPDFBuffer(data);
-    const filename = `invoice_${safeFilename(invoiceNumber)}.pdf`;
+    const filename = `${safeFilename(invoiceNumber)}.pdf`;
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/pdf");

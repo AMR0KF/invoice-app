@@ -238,7 +238,7 @@ function renderTemplate(data) {
 
 async function buildAndSavePDF(data) {
   fs.mkdirSync(OUT, { recursive: true });
-  const filename = `invoice_${safeFilename(data.invoice_number)}.pdf`;
+  const filename = `${safeFilename(data.invoice_number)}.pdf`;
   const outPath = path.join(OUT, filename);
   const buffer = await buildPDFBuffer(data);
   fs.writeFileSync(outPath, buffer);
