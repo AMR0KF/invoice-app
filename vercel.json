@@ -5,6 +5,7 @@
     { "src": "server.py", "use": "@vercel/python" }
   ],
   "routes": [
+    { "src": "/api/generate", "dest": "api/generate-pdf.js" },
     { "src": "/api/generate-pdf", "dest": "api/generate-pdf.js" },
     { "src": "/(.*)", "dest": "server.py" }
   ]
