@@ -11,3 +11,5 @@ data/companies.json
 data/customers.json
 data/supabase_config.json
 .vercel/
+
+.vercel
