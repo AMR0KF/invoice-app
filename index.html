@@ -1086,8 +1086,41 @@ body.show-discount td.discount-col { display: table-cell; }
   .items-table tbody td input {
     width: 100% !important;
     min-height: 36px;
-    background: #1d2230;
+    background: var(--surface);
     border-color: var(--border);
+  }
+  body.light-theme .items-table tr {
+    background: #ffffff;
+    border-color: #d7dce5;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+  }
+  body.light-theme .items-table tbody td {
+    color: #172033;
+  }
+  body.light-theme .items-table tbody td:not(:first-child):not(:last-child)::before,
+  body.light-theme .items-table tbody td:first-child {
+    color: #667085 !important;
+  }
+  body.light-theme .items-table tbody td input {
+    background: #f8fafc;
+    border-color: #d7dce5;
+    color: #172033;
+  }
+  body.light-theme .items-table tbody td input:focus {
+    background: #ffffff;
+    border-color: #0d9488;
+  }
+  body.light-theme .money-cell {
+    background: #f8fafc;
+    border: 1px solid #d7dce5;
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  body.light-theme .money-symbol {
+    color: #667085;
+  }
+  body.light-theme .money-value {
+    color: #101828;
   }
   .items-table tbody td.num {
     text-align: right;
