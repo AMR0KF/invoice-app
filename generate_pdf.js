@@ -159,6 +159,7 @@ async function browserLaunchOptions() {
 
 function renderTemplate(data) {
   const lang = ["en", "ar", "bi"].includes(data.language) ? data.language : "bi";
+  const template = ["aurora", "meridian", "meridian_v2", "obsidian", "classic"].includes(data.template) ? data.template : "aurora";
   const cur = data.currency === "LBP" ? "LBP" : "USD";
   const seller = data.seller || {};
   const buyer = data.buyer || {};
@@ -168,7 +169,7 @@ function renderTemplate(data) {
   const vatPct = Number(data.vat_pct) || 0;
   const notes = (data.notes || "").trim() || "\u2014";
   const invoiceWord = lang === "ar" ? "\u0641\u0627\u062a\u0648\u0631\u0629" : (lang === "bi" ? "INVOICE / \u0641\u0627\u062a\u0648\u0631\u0629" : "INVOICE");
-  const bodyClass = `lang-${lang}`;
+  const bodyClass = `lang-${lang} template-${template}`;
 
   const rowsHtml = totals.rows.map((row, index) => `
     <tr>

@@ -10,7 +10,6 @@ module.exports = async function handler(req, res) {
 
   try {
     const data = req.body || {};
-    data.template = "meridian_v2";
     const invoiceNumber = data.invoice_number || "INV-001";
     const pdf = await buildPDFBuffer(data);
     const filename = `${safeFilename(invoiceNumber)}.pdf`;

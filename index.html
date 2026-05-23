@@ -447,34 +447,137 @@ body.show-discount td.discount-col { display: table-cell; }
   padding: 72px 14px 24px;
 }
 .modal-backdrop.open { display: flex; }
+#auth-modal {
+  align-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 16% 18%, rgba(24,119,242,.16), transparent 34%),
+    radial-gradient(circle at 84% 12%, rgba(0,160,157,.12), transparent 30%),
+    linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%);
+}
+.auth-shell {
+  width: min(980px, 100%);
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(340px, 430px);
+  gap: 56px;
+  align-items: center;
+}
+.auth-brand {
+  color: #172033;
+}
+.auth-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.auth-logo-mark {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #1877f2;
+  color: #fff;
+  box-shadow: 0 14px 30px rgba(24,119,242,.24);
+}
+.auth-logo-mark svg {
+  width: 29px;
+  height: 29px;
+}
+.auth-logo-text {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: #1877f2;
+}
+.auth-brand h1 {
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.05;
+  color: #172033;
+  max-width: 560px;
+}
+.auth-brand p {
+  max-width: 470px;
+  margin-top: 16px;
+  color: #475467;
+  font-size: 18px;
+  line-height: 1.45;
+}
 .auth-dialog {
-  width: min(420px, 100%);
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  border-radius: 10px;
-  box-shadow: 0 24px 70px rgba(0,0,0,.48);
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  box-shadow: 0 20px 56px rgba(15,23,42,.14);
   padding: 18px;
 }
 .auth-dialog h2 {
-  font-size: 18px;
-  color: var(--text);
+  font-size: 20px;
+  color: #172033;
   margin-bottom: 6px;
 }
 .auth-dialog p {
-  color: var(--text2);
+  color: #667085;
   font-size: 12px;
   line-height: 1.5;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .auth-grid {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+}
+.auth-dialog .bilabel {
+  color: #344054;
+  font-weight: 600;
+}
+.auth-dialog input {
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+  color: #172033;
+  min-height: 46px;
+  border-radius: 8px;
+  font-size: 15px;
+}
+.auth-dialog input::placeholder {
+  color: #98a2b3;
+}
+.auth-dialog input:focus {
+  border-color: #1877f2;
+  box-shadow: 0 0 0 3px rgba(24,119,242,.12);
 }
 .auth-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
+  display: grid;
+  gap: 10px;
   margin-top: 16px;
+}
+.auth-actions .primary-btn {
+  min-height: 46px;
+  border-radius: 8px;
+  font-size: 15px;
+  background: #1877f2;
+  border-color: #1877f2;
+}
+.auth-actions .primary-btn:hover {
+  background: #166fe5;
+}
+.auth-actions .secondary-btn {
+  color: #344054;
+  background: #ffffff;
+  border-color: #d0d5dd;
+}
+.auth-help {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #eaecf0;
+  color: #667085;
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.45;
+}
+.auth-help strong {
+  color: #344054;
 }
 body.auth-locked #auth-cancel-btn {
   display: none;
@@ -523,9 +626,31 @@ body.auth-locked #auth-cancel-btn {
   font-size: 12px;
   margin-top: 2px;
 }
+.pdf-preview-body {
+  min-height: 0;
+  overflow: auto;
+  background: #eef1f5;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 14px;
+}
+.pdf-preview-canvas {
+  max-width: 100%;
+  height: auto;
+  background: #ffffff;
+  box-shadow: 0 10px 36px rgba(15,23,42,.18);
+}
+.pdf-preview-loading {
+  margin: auto;
+  color: #475467;
+  font-size: 13px;
+  padding: 18px;
+  text-align: center;
+}
 .pdf-preview-frame {
   width: 100%;
-  height: 100%;
+  min-height: 70vh;
   border: 0;
   background: #eef1f5;
 }
@@ -771,13 +896,13 @@ body.auth-locked #auth-cancel-btn {
 }
 .mobile-action-btn {
   border: 1px solid var(--border2);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--surface2);
   color: var(--text);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
-  padding: 10px 8px;
+  padding: 13px 12px;
 }
 .mobile-action-btn.primary {
   background: var(--accent);
@@ -1071,6 +1196,39 @@ body.auth-locked #auth-cancel-btn {
 }
 
 @media (max-width: 720px) {
+  #auth-modal {
+    align-items: stretch;
+    padding: 18px 14px;
+  }
+  .auth-shell {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    align-content: center;
+  }
+  .auth-brand {
+    text-align: left;
+  }
+  .auth-logo {
+    margin-bottom: 14px;
+  }
+  .auth-logo-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+  }
+  .auth-logo-text {
+    font-size: 25px;
+  }
+  .auth-brand h1 {
+    font-size: 28px;
+  }
+  .auth-brand p {
+    font-size: 15px;
+    margin-top: 10px;
+  }
+  .auth-dialog {
+    padding: 16px;
+  }
   body {
     padding-bottom: 128px;
   }
@@ -1247,10 +1405,17 @@ body.auth-locked #auth-cancel-btn {
   }
   .pdf-preview-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
   }
   .pdf-preview-actions button {
     width: 100%;
+    min-height: 44px;
+    border-radius: 10px;
+  }
+  .pdf-preview-actions .primary-btn {
+    order: -1;
   }
 }
 </style>
@@ -1283,22 +1448,42 @@ body.auth-locked #auth-cancel-btn {
 </div>
 
 <div class="modal-backdrop" id="auth-modal" onclick="closeAuthOnBackdrop(event)" aria-hidden="true">
-  <div class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
-    <h2 id="auth-title">Sign in</h2>
-    <p id="auth-copy">Sign in to access your invoices. Use your assigned username and password.</p>
-    <div class="auth-grid">
-      <div class="field">
-        <div class="bilabel"><span>Username</span><span class="ar">اسم المستخدم</span></div>
-        <input id="auth-username" autocomplete="username" placeholder="amer or amro">
+  <div class="auth-shell">
+    <section class="auth-brand" aria-label="Invoice Maker">
+      <div class="auth-logo">
+        <span class="auth-logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M7 3.75h7.2L18 7.55v12.7H7V3.75Z" fill="currentColor" opacity=".2"/>
+            <path d="M7 3.75h7.2L18 7.55v12.7H7V3.75Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+            <path d="M14.2 3.9v3.8H18M9.5 11h6M9.5 14h6M9.5 17h3.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="auth-logo-text">Invoice Maker</span>
       </div>
-      <div class="field">
-        <div class="bilabel"><span>Password</span><span class="ar">كلمة المرور</span></div>
-        <input id="auth-password" type="password" autocomplete="current-password" placeholder="12345678">
+      <h1>Create and share invoices from anywhere.</h1>
+      <p>Your companies, customers, settings, and invoice defaults stay private to your account.</p>
+    </section>
+
+    <div class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <h2 id="auth-title">Sign in</h2>
+      <p id="auth-copy">Use your assigned username and password to continue.</p>
+      <div class="auth-grid">
+        <div class="field">
+          <div class="bilabel"><span>Username</span><span class="ar">اسم المستخدم</span></div>
+          <input id="auth-username" autocomplete="username" placeholder="Enter username">
+        </div>
+        <div class="field">
+          <div class="bilabel"><span>Password</span><span class="ar">كلمة المرور</span></div>
+          <input id="auth-password" type="password" autocomplete="current-password" placeholder="Enter password">
+        </div>
       </div>
-    </div>
-    <div class="auth-actions">
-      <button class="secondary-btn" id="auth-cancel-btn" type="button" onclick="closeAuthModal()">Cancel</button>
-      <button class="primary-btn" id="auth-login-btn" type="button" onclick="signInSupabase()">Sign in</button>
+      <div class="auth-actions">
+        <button class="secondary-btn" id="auth-cancel-btn" type="button" onclick="closeAuthModal()">Cancel</button>
+        <button class="primary-btn" id="auth-login-btn" type="button" onclick="signInSupabase()">Sign in</button>
+      </div>
+      <div class="auth-help">
+        Use your workspace username.
+      </div>
     </div>
   </div>
 </div>
@@ -1567,10 +1752,13 @@ body.auth-locked #auth-cancel-btn {
         </svg>
       </button>
     </div>
-    <iframe class="pdf-preview-frame" id="pdf-preview-frame" title="PDF preview"></iframe>
+    <div class="pdf-preview-body" id="pdf-preview-body">
+      <div class="pdf-preview-loading" id="pdf-preview-loading">Rendering preview...</div>
+      <canvas class="pdf-preview-canvas" id="pdf-preview-canvas"></canvas>
+    </div>
     <div class="pdf-preview-actions">
       <button class="secondary-btn" type="button" onclick="openLastPdf()">Open</button>
-      <button class="primary-btn" type="button" onclick="shareMobilePdf()">Share</button>
+      <button class="primary-btn" type="button" onclick="shareMobilePdf()">Share PDF</button>
     </div>
   </div>
 </div>
@@ -1581,7 +1769,7 @@ body.auth-locked #auth-cancel-btn {
     <span id="mobile-pdf-status">No PDF generated yet</span>
   </div>
   <div class="mobile-actions">
-    <button class="mobile-action-btn primary" id="mobile-pdf-btn" type="button" onclick="generateMobilePdf()">Print PDF</button>
+    <button class="mobile-action-btn primary" id="mobile-pdf-btn" type="button" onclick="generateMobilePdf()">Preview PDF</button>
     <button class="mobile-action-btn" id="mobile-open-btn" type="button" onclick="openLastPdf()" disabled>Open</button>
     <button class="mobile-action-btn" id="mobile-share-btn" type="button" onclick="shareMobilePdf()" disabled>Share</button>
   </div>
@@ -1724,6 +1912,7 @@ let settingsActiveTab = 'document';
 let supabaseClient = null;
 let supabaseUser = null;
 let supabaseConfigured = false;
+let pdfJsModule = null;
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -2846,6 +3035,7 @@ function setLastGeneratedPdf(fileInfo) {
     lastGeneratedPdf = {
       filename: fileInfo.filename,
       url: fileInfo.url,
+      blob: fileInfo.blob || null,
       invoiceNumber: fileInfo.invoiceNumber || document.getElementById('inv-num').value.trim() || 'INV-001',
       isObjectUrl: !!fileInfo.isObjectUrl,
     };
@@ -2910,6 +3100,7 @@ async function generatePdfFile(options = {}) {
       setLastGeneratedPdf({
         filename,
         url,
+        blob,
         invoiceNumber: data.invoice_number,
         isObjectUrl: true,
       });
@@ -2991,18 +3182,69 @@ function openLastPdf() {
   window.open(lastGeneratedPdf.url, '_blank');
 }
 
+async function loadPdfRenderer() {
+  if (pdfJsModule) return pdfJsModule;
+  pdfJsModule = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs');
+  pdfJsModule.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs';
+  return pdfJsModule;
+}
+
+async function lastPdfBlob() {
+  if (!lastGeneratedPdf) return null;
+  if (lastGeneratedPdf.blob) return lastGeneratedPdf.blob;
+  const response = await fetch(lastGeneratedPdf.url);
+  const blob = await response.blob();
+  lastGeneratedPdf.blob = blob;
+  return blob;
+}
+
+async function renderPdfPreview() {
+  const body = document.getElementById('pdf-preview-body');
+  const canvas = document.getElementById('pdf-preview-canvas');
+  const loading = document.getElementById('pdf-preview-loading');
+  if (!body || !canvas || !loading) return;
+
+  loading.style.display = 'block';
+  loading.textContent = 'Rendering preview...';
+  canvas.style.display = 'none';
+
+  try {
+    const pdfjs = await loadPdfRenderer();
+    const blob = await lastPdfBlob();
+    const buffer = await blob.arrayBuffer();
+    const pdf = await pdfjs.getDocument({ data: buffer }).promise;
+    const page = await pdf.getPage(1);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const maxWidth = Math.max(260, body.clientWidth - 28);
+    const scale = Math.min(1.7, maxWidth / baseViewport.width);
+    const viewport = page.getViewport({ scale });
+    const dpr = window.devicePixelRatio || 1;
+    const context = canvas.getContext('2d');
+
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    await page.render({ canvasContext: context, viewport }).promise;
+    loading.style.display = 'none';
+    canvas.style.display = 'block';
+  } catch (err) {
+    loading.innerHTML = 'Preview could not render here.<br><button class="secondary-btn" type="button" onclick="openLastPdf()">Open PDF</button>';
+  }
+}
+
 function openPdfPreview() {
   if (!lastGeneratedPdf) {
     toast('Generate a PDF first', 'error');
     return;
   }
   const modal = document.getElementById('pdf-preview-modal');
-  const frame = document.getElementById('pdf-preview-frame');
   const filename = document.getElementById('pdf-preview-filename');
-  if (frame) frame.src = lastGeneratedPdf.url;
   if (filename) filename.textContent = lastGeneratedPdf.filename;
   modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
+  renderPdfPreview();
 }
 
 function closePdfPreview() {
@@ -3010,8 +3252,11 @@ function closePdfPreview() {
   if (!modal) return;
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
-  const frame = document.getElementById('pdf-preview-frame');
-  if (frame) frame.removeAttribute('src');
+  const canvas = document.getElementById('pdf-preview-canvas');
+  if (canvas) {
+    const context = canvas.getContext('2d');
+    context && context.clearRect(0, 0, canvas.width, canvas.height);
+  }
 }
 
 function closePdfPreviewOnBackdrop(event) {
@@ -3030,8 +3275,7 @@ async function shareGeneratedPdf() {
 
   try {
     if (navigator.share) {
-      const response = await fetch(lastGeneratedPdf.url);
-      const blob = await response.blob();
+      const blob = await lastPdfBlob();
       const file = new File([blob], lastGeneratedPdf.filename, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ title, text, files: [file] });

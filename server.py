@@ -468,7 +468,6 @@ def generate_pdf():
         settings = get_settings()
         invoice_number = settings.get("next_invoice_number") or data.get("invoice_number") or "INV-001"
         data["invoice_number"] = invoice_number
-        data["template"] = "meridian_v2"
         result = subprocess.run(
             ["node", str(BASE / "generate_pdf.js")],
             input=json.dumps(data, ensure_ascii=False),

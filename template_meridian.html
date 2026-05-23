@@ -338,6 +338,127 @@ body.lang-ar .party-line,
 body.lang-ar .company-line {
   direction: rtl;
 }
+body.template-meridian_v2 .gold-spine {
+  background: var(--gold);
+}
+body.template-meridian .page {
+  --gold: #b88935;
+  --gold-light: #ead9b7;
+  --page-bg: #fffdf8;
+  --row-alt: #fff8ec;
+}
+body.template-meridian .header {
+  padding-top: 23px;
+}
+body.template-meridian .invoice-number {
+  color: #9a6a1f;
+  font-size: 20px;
+}
+body.template-aurora {
+  --gold: #635bff;
+  --gold-light: #f6c5ef;
+  --gold-pale: #f3f1ff;
+  --ink: #111827;
+  --ink-mid: #344054;
+  --ink-muted: #667085;
+  --ink-light: #6d6af8;
+  --page-bg: #ffffff;
+  --surface: #ffffff;
+  --row-alt: #fbfaff;
+  --rule: #d9d7ff;
+  --rule-light: #ecebff;
+}
+body.template-aurora .gold-spine {
+  display: none;
+}
+body.template-aurora .header {
+  padding: 25px 28px 26px;
+  background: linear-gradient(104deg, #e3e8ff 0%, #eeebff 56%, #fde8f6 100%);
+}
+body.template-aurora .gold-rule {
+  height: 5px;
+  margin: -14px 28px 12px;
+  background: linear-gradient(96deg, #ffffff 0%, #ffffff 34%, rgba(255,255,255,.35) 48%, #ffffff 65%, #ffffff 100%);
+  transform: skewY(-2.5deg);
+}
+body.template-aurora .mid,
+body.template-aurora .items {
+  padding-left: 28px;
+}
+body.template-aurora .parties {
+  gap: 14px;
+  margin-bottom: 18px;
+}
+body.template-aurora .party {
+  border: 1px solid #dddafe;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 15px 30px rgba(99, 91, 255, .08);
+}
+body.template-aurora .party-from {
+  border-left: 1px solid #dddafe;
+}
+body.template-aurora .invoice-kicker,
+body.template-aurora .party-label,
+body.template-aurora .notes-label {
+  color: #635bff;
+}
+body.template-aurora .bottom-panel {
+  background: #ffffff;
+}
+body.template-aurora .grand {
+  border: 0;
+  border-radius: 8px;
+  background: #7367f0;
+  padding: 10px 12px;
+}
+body.template-aurora .grand span,
+body.template-aurora .grand strong {
+  color: #ffffff;
+}
+body.template-obsidian {
+  --gold: #7dd3fc;
+  --gold-light: #818cf8;
+  --page-bg: #111827;
+  --surface: #172033;
+  --row-alt: #1f2937;
+  --rule: #334155;
+  --rule-light: #293548;
+  --ink: #f8fafc;
+  --ink-mid: #e5e7eb;
+  --ink-muted: #cbd5e1;
+  --ink-light: #93c5fd;
+  --ink-faint: #64748b;
+}
+body.template-obsidian .page,
+body.template-obsidian .footer {
+  background: #111827;
+}
+body.template-obsidian .bottom-panel {
+  background: #151e2e;
+}
+body.template-classic {
+  --gold: #111827;
+  --gold-light: #d1d5db;
+  --page-bg: #ffffff;
+  --surface: #ffffff;
+  --row-alt: #f9fafb;
+  --rule: #d1d5db;
+  --rule-light: #e5e7eb;
+  --ink: #111827;
+  --ink-mid: #374151;
+  --ink-muted: #6b7280;
+  --ink-light: #9ca3af;
+}
+body.template-classic .gold-spine {
+  display: none;
+}
+body.template-classic .gold-rule {
+  background: #111827;
+}
+body.template-classic .invoice-number {
+  letter-spacing: 0;
+}
 </style>
 </head>
 <body class="{{BODY_CLASS}}">
