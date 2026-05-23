@@ -1,0 +1,2848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invoice Maker / صانع الفواتير</title>
+<style>
+/* ── Reset & Base ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #1b1f2a;
+  --surface:  #252a36;
+  --surface2: #20242f;
+  --border:   #383f50;
+  --border2:  #465064;
+  --accent:   #00a09d;
+  --accent2:  #00c7bd;
+  --success:  #16a34a;
+  --danger:   #dc2626;
+  --text:     #f0f0f0;
+  --text2:    #a0a0a0;
+  --text3:    #666;
+  --radius:   6px;
+  --shadow:   0 2px 8px rgba(0,0,0,.35);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  padding: 0 0 60px;
+}
+body.light-theme {
+  --bg:       #eef1f5;
+  --surface:  #ffffff;
+  --surface2: #f6f7f9;
+  --border:   #d7dce5;
+  --border2:  #b9c1cf;
+  --accent:   #0f766e;
+  --accent2:  #0d9488;
+  --text:     #172033;
+  --text2:    #667085;
+  --text3:    #98a2b3;
+  --shadow:   0 10px 28px rgba(15,23,42,.1);
+}
+body.light-theme ::-webkit-scrollbar-track { background: #e8edf3; }
+body.light-theme ::-webkit-scrollbar-thumb { background: #b9c1cf; }
+body.light-theme .nav-link:hover,
+body.light-theme .nav-link.active {
+  background: #d9dee8;
+  color: #172033;
+}
+body.light-theme .icon-btn:hover {
+  background: #eef2f7;
+  border-color: #aab4c3;
+  color: #172033;
+}
+body.light-theme .combo-btn.del,
+body.light-theme .danger-btn {
+  background: #fff5f5;
+  color: #b42318;
+  border-color: #fecdca;
+}
+body.light-theme .combo-btn.save {
+  background: #eef4ff;
+  color: #175cd3;
+  border-color: #b2ccff;
+}
+body.light-theme .gen-btn:disabled {
+  background: #d0d5dd;
+  color: #667085;
+}
+body.light-theme .pdf-btn {
+  background: #8a4f86;
+}
+body.light-theme .pdf-btn:hover {
+  background: #7a4276;
+}
+body.light-theme .written-box {
+  background: #f8fafc;
+  border-color: #d7dce5;
+}
+body.light-theme .written-row .wlabel {
+  color: #667085;
+}
+body.light-theme .written-row .wval {
+  color: #175cd3;
+}
+body.light-theme .total-row.grand .amt {
+  color: #0f766e;
+}
+body.light-theme .company-toggle {
+  background: #ecfdf3;
+  border-color: #abefc6;
+}
+body.light-theme .company-toggle label {
+  color: #067647;
+}
+body.light-theme .del-row:hover {
+  background: #fff1f3;
+  color: #b42318;
+}
+body.light-theme .toast {
+  background: #ffffff;
+  color: #172033;
+}
+body.light-theme .toast.success {
+  color: #067647;
+}
+body.light-theme .toast.error {
+  color: #b42318;
+}
+body.light-theme .mobile-action-bar {
+  background: rgba(255,255,255,.96);
+  border-top-color: #d7dce5;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ── Top bar ───────────────────────────────────────────────────────────── */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-logo { font-size: 18px; font-weight: 700; color: var(--accent2); }
+.topbar-sub  { font-size: 12px; color: var(--text2); }
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 18px;
+}
+.nav-link {
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.nav-link:hover,
+.nav-link.active {
+  background: #343947;
+}
+.topbar-spacer { flex: 1; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.auth-pill {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.auth-pill.online {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent2);
+}
+.auth-signout {
+  border: 0;
+  background: transparent;
+  color: var(--text2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface2);
+  color: var(--text2); cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center;
+  transition: background .15s, border-color .15s, color .15s, transform .12s;
+}
+.icon-btn:hover { background: #303030; border-color: var(--border2); color: var(--text); }
+.icon-btn:active { transform: translateY(1px); }
+.icon-btn svg { width: 18px; height: 18px; }
+
+/* ── Layout ────────────────────────────────────────────────────────────── */
+.container { max-width: 760px; margin: 0 auto; padding: 20px 16px; }
+
+/* ── Card / Section ────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.card-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--text2);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.card-title svg { width: 14px; height: 14px; opacity: .7; }
+.seller-card { display: none; }
+
+/* ── Bilingual label ────────────────────────────────────────────────────── */
+/* English left, Arabic right on same line */
+.bilabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--text2);
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
+.bilabel .ar { font-family: 'Traditional Arabic', Arial, sans-serif; direction: rtl; }
+
+/* ── Inputs ────────────────────────────────────────────────────────────── */
+input, select, textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color .15s;
+  font-family: inherit;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent2);
+}
+input::placeholder { color: var(--text3); }
+select option { background: var(--surface2); }
+textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+
+/* combobox wrapper */
+.combo-wrap { position: relative; }
+.combo-wrap input { padding-right: 122px; }
+.combo-actions {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: flex; gap: 4px;
+}
+.combo-btn {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--text2); cursor: pointer;
+  font-size: 11px; padding: 3px 7px; white-space: nowrap;
+  transition: background .12s;
+}
+.combo-btn:hover { background: var(--border); color: var(--text); }
+.combo-btn.save  { color: #60a5fa; border-color: #2563eb44; }
+.combo-btn.del   { color: #f87171; border-color: #dc262644; }
+
+.dropdown-list {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: 8px; max-height: 200px; overflow-y: auto;
+  z-index: 50; box-shadow: var(--shadow);
+  display: none;
+}
+.dropdown-list.open { display: block; }
+.dropdown-item {
+  padding: 9px 12px; cursor: pointer; display: flex;
+  justify-content: space-between; align-items: center;
+  transition: background .1s;
+}
+.dropdown-item:hover { background: var(--border); }
+.dropdown-item .di-name { font-weight: 500; }
+.dropdown-item .di-sub  { font-size: 11px; color: var(--text2); }
+.dropdown-item .di-del  { color: var(--text3); font-size: 16px; padding: 0 4px; opacity: .5; }
+.dropdown-item .di-del:hover { color: #f87171; opacity: 1; }
+
+/* ── Grid helpers ───────────────────────────────────────────────────────── */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; }
+
+/* ── Lang toggle ────────────────────────────────────────────────────────── */
+/* ── Items table ─────────────────────────────────────────────────────────── */
+.items-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.items-table thead th {
+  font-size: 11px; font-weight: 600; color: var(--text2);
+  text-align: left; padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.items-table thead th.r { text-align: right; }
+.items-table thead th:first-child { border-radius: 6px 0 0 0; width: 36px; }
+.items-table thead th:last-child  { border-radius: 0 6px 0 0; width: 36px; }
+
+.items-table tbody tr:nth-child(even) td { background: transparent; }
+.items-table tbody td { padding: 4px 4px; border-bottom: 1px solid #2f2f2f; }
+.items-table tbody td input {
+  background: transparent; border: 1px solid transparent;
+  border-radius: 5px; padding: 5px 6px; font-size: 12px;
+}
+.items-table tbody td input:focus { background: var(--surface2); border-color: var(--accent2); }
+.items-table tbody td.r input { text-align: right; }
+.items-table tbody td.num { text-align: right; padding: 4px 8px; font-size: 12px; font-weight: 500; }
+.money-cell {
+  display: grid;
+  grid-template-columns: 12px minmax(68px, max-content);
+  justify-content: end;
+  align-items: center;
+  column-gap: 1ch;
+  min-width: 118px;
+  font-variant-numeric: tabular-nums;
+}
+.money-symbol { color: var(--text2); text-align: right; }
+.money-value { text-align: right; font-weight: 700; color: var(--text); }
+.discount-col { display: none; }
+body.show-discount .discount-col { display: table-cell; }
+body.show-discount td.discount-col { display: table-cell; }
+.del-row {
+  background: transparent; border: none; color: var(--text3);
+  cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 18px; line-height: 1;
+}
+.del-row:hover { color: #f87171; background: #3a1f1f; }
+
+/* Add row button */
+.add-row-btn {
+  width: 100%; padding: 7px; border: 1px dashed var(--border2);
+  border-radius: 7px; background: transparent; color: var(--text2);
+  font-size: 12px; cursor: pointer; transition: all .15s; margin-bottom: 14px;
+}
+.add-row-btn:hover { background: var(--surface2); border-color: var(--accent2); color: var(--text); }
+
+/* ── Totals ──────────────────────────────────────────────────────────────── */
+.totals { border-top: 1px solid var(--border); padding-top: 12px; }
+.total-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 0; font-size: 13px;
+}
+.total-row .lbl { color: var(--text2); }
+.total-row .amt { font-variant-numeric: tabular-nums; font-weight: 500; }
+.total-row.grand {
+  border-top: 1px solid var(--border2); margin-top: 6px; padding-top: 10px;
+  font-size: 16px; font-weight: 700;
+}
+.total-row.grand .lbl { color: var(--text); }
+.total-row.grand .amt { color: var(--accent2); font-size: 18px; }
+
+.written-box {
+  margin-top: 10px; padding: 9px 12px;
+  background: #1a2540; border: 1px solid #2a3a6a;
+  border-radius: 7px;
+}
+.written-row {
+  font-size: 12px; line-height: 1.7;
+}
+.written-row .wlabel { color: var(--text2); font-weight: 600; }
+.written-row .wval   { color: #93c5fd; }
+.written-row.ar-row  { text-align: right; direction: rtl; }
+.written-row.ar-row .wval { font-family: 'Traditional Arabic', Arial, sans-serif; }
+
+/* ── Optional field row ──────────────────────────────────────────────────── */
+.opt-row { display: flex; align-items: center; gap: 8px; }
+.opt-row input[type=checkbox] { width: auto; cursor: pointer; accent-color: var(--accent); }
+.opt-row label { font-size: 12px; color: var(--text2); cursor: pointer; }
+.company-toggle {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #315b65;
+  border-radius: 7px;
+  background: #1f3139;
+  justify-content: space-between;
+}
+.company-toggle label {
+  color: #d8fffb;
+  font-weight: 600;
+}
+.company-toggle .hint {
+  color: var(--text2);
+  font-size: 11px;
+}
+
+/* ── Notes textarea ──────────────────────────────────────────────────────── */
+.notes-fixed {
+  margin-top: 8px; padding: 8px 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; font-size: 12px;
+  color: var(--text2); display: flex; gap: 10px; align-items: center;
+}
+.thanks-stack { display: flex; flex-direction: column; gap: 2px; line-height: 1.45; }
+.thanks-stack strong { color: var(--text); }
+.thanks-stack .ar { font-family: 'Traditional Arabic', Arial, sans-serif; direction: rtl; }
+
+/* ── Generate button ─────────────────────────────────────────────────────── */
+.gen-btn {
+  width: 100%; padding: 13px; font-size: 15px; font-weight: 600;
+  background: var(--accent); border: none; border-radius: var(--radius);
+  color: #fff; cursor: pointer; display: flex; align-items: center;
+  justify-content: center; gap: 8px; transition: background .15s;
+  box-shadow: none;
+}
+.gen-btn:hover { background: var(--accent2); }
+.gen-btn:disabled { background: #333; color: var(--text3); cursor: not-allowed; box-shadow: none; }
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: 8px; padding: 10px 20px; font-size: 13px;
+  box-shadow: var(--shadow); opacity: 0; transition: all .25s;
+  pointer-events: none; z-index: 999; white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.toast.success { border-color: #16a34a44; color: #86efac; }
+.toast.error   { border-color: #dc262644; color: #fca5a5; }
+
+/* ── Divider ─────────────────────────────────────────────────────────────── */
+.divider { height: 1px; background: var(--border); margin: 10px 0; }
+
+/* Settings panel */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(10,10,10,.68);
+  z-index: 700; display: none; align-items: flex-start; justify-content: center;
+  padding: 72px 14px 24px;
+}
+.modal-backdrop.open { display: flex; }
+.auth-dialog {
+  width: min(420px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.48);
+  padding: 18px;
+}
+.auth-dialog h2 {
+  font-size: 18px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.auth-dialog p {
+  color: var(--text2);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.auth-grid {
+  display: grid;
+  gap: 10px;
+}
+.auth-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+.settings-panel {
+  width: min(920px, 100%); max-height: calc(100vh - 96px); overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 10px; box-shadow: 0 24px 70px rgba(0,0,0,.48);
+  display: grid; grid-template-columns: minmax(220px, .85fr) minmax(320px, 1.25fr);
+}
+.settings-side {
+  border-right: 1px solid var(--border); background: var(--surface2);
+  min-height: 520px; overflow-y: auto;
+}
+.settings-main { padding: 18px; overflow-y: auto; }
+.settings-panel.document-mode {
+  grid-template-columns: 1fr;
+}
+.settings-panel.document-mode .settings-side {
+  display: none;
+}
+.settings-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tab {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 10px 10px;
+}
+.settings-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent2);
+}
+.settings-main[data-tab="document"] .settings-companies-only,
+.settings-main[data-tab="companies"] .settings-document-only {
+  display: none !important;
+}
+.settings-section-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.settings-section-sub {
+  color: var(--text2);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 14px;
+}
+.theme-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+}
+.switch-control {
+  position: relative;
+  width: 46px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+.switch-control input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #111827;
+  border: 1px solid var(--border2);
+  transition: background .18s, border-color .18s;
+}
+.switch-track::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  top: 2px;
+  left: 2px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.28);
+  transition: transform .18s;
+}
+.switch-control input:checked + .switch-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch-control input:checked + .switch-track::after {
+  transform: translateX(22px);
+}
+.settings-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border);
+}
+.settings-title { font-size: 16px; font-weight: 700; color: var(--text); }
+.settings-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.company-list { padding: 8px; }
+.company-item {
+  width: 100%; text-align: left; background: transparent; border: 1px solid transparent;
+  color: var(--text); border-radius: 8px; padding: 10px; cursor: pointer;
+  display: block; transition: background .12s, border-color .12s;
+}
+.company-item:hover { background: var(--surface); }
+.company-item.active { background: rgba(0,160,157,.14); border-color: var(--accent); }
+.company-item-name { font-weight: 600; font-size: 13px; }
+.company-item-meta { color: var(--text2); font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-empty { color: var(--text3); font-size: 12px; padding: 16px 10px; line-height: 1.5; }
+.settings-toolbar { display: flex; gap: 8px; margin-bottom: 14px; }
+.settings-toolbar .secondary-btn,
+.settings-actions .secondary-btn,
+.settings-actions .danger-btn,
+.settings-actions .primary-btn {
+  border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 600;
+  padding: 8px 11px; border: 1px solid var(--border); transition: background .15s, transform .12s;
+}
+.settings-toolbar button:active,
+.settings-actions button:active { transform: translateY(1px); }
+.primary-btn { background: var(--accent); color: #fff; border-color: var(--accent); }
+.primary-btn:hover { background: var(--accent2); }
+.secondary-btn { background: var(--surface2); color: var(--text); }
+.secondary-btn:hover { background: var(--border); }
+.danger-btn { background: #3a1f1f; color: #fca5a5; border-color: #7f1d1d; }
+.danger-btn:hover { background: #4a2424; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.settings-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-form-grid .field.full { grid-column: 1 / -1; }
+.settings-form-grid .settings-toggle { grid-column: 1 / -1; }
+.action-bar { display: grid; gap: 10px; }
+.action-bar .add-row-btn { margin-top: 0; }
+.action-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.action-summary > div {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 10px;
+}
+.summary-label {
+  display: block;
+  color: var(--text2);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 3px;
+}
+.action-summary strong {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.pdf-btn {
+  background: #91548e;
+}
+.pdf-btn:hover {
+  background: #a85ea3;
+}
+.side-section {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 2px;
+}
+.side-title {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 7px;
+}
+.side-note {
+  color: var(--text2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.side-kv {
+  display: grid;
+  gap: 6px;
+  color: var(--text2);
+  font-size: 12px;
+}
+.side-kv span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.side-kv strong {
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+}
+.mobile-action-bar {
+  display: none;
+}
+.mobile-bar-meta {
+  min-width: 0;
+}
+.mobile-bar-meta strong,
+.mobile-bar-meta span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mobile-bar-meta strong {
+  color: var(--text);
+  font-size: 14px;
+}
+.mobile-bar-meta span {
+  color: var(--text2);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.mobile-actions {
+  display: grid;
+  grid-template-columns: 1.1fr .85fr .85fr;
+  gap: 7px;
+}
+.mobile-action-btn {
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px 8px;
+}
+.mobile-action-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.mobile-action-btn:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+
+/* Compact desktop workspace */
+@media (min-width: 901px) {
+  html {
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    background: #171717;
+    font-size: 13px;
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+  body.light-theme {
+    background: #e8edf3;
+  }
+  .topbar {
+    padding: 8px 18px;
+    min-height: 46px;
+  }
+  .topbar-logo {
+    font-size: 15px;
+  }
+  .topbar-sub {
+    display: none;
+  }
+  .topbar-nav {
+    margin-left: 10px;
+  }
+  .nav-link {
+    padding: 5px 9px;
+    font-size: 13px;
+  }
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+  }
+  .container {
+    width: min(1580px, calc(100% - 28px));
+    max-width: none;
+    height: calc(100vh - 70px);
+    margin: 0 auto;
+    padding: 12px 0;
+    display: grid;
+    grid-template-columns: minmax(300px, .82fr) minmax(420px, 1.18fr) minmax(320px, .72fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 10px 16px;
+    align-items: stretch;
+  }
+  .container > .card {
+    margin-bottom: 0;
+    min-height: 0;
+  }
+  .container > .card:nth-of-type(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .container > .card:nth-of-type(3) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .container > .card:nth-of-type(4) {
+    grid-column: 1 / span 2;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+  .container > .card:nth-of-type(5) {
+    grid-column: 1 / span 2;
+    grid-row: 3;
+  }
+  .card {
+    background: #252a36;
+    border-color: #3b4252;
+    border-radius: 6px;
+    padding: 14px 18px;
+    box-shadow: none;
+  }
+  body.light-theme .card {
+    background: #ffffff;
+    border-color: #d7dce5;
+  }
+  .meta-card {
+    display: block;
+  }
+  .meta-card .card-title {
+    margin-bottom: 9px;
+  }
+  .meta-card .divider {
+    display: none;
+  }
+  .meta-card .g3 {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .meta-card .g3 .field:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+  .card-title {
+    font-size: 10.5px;
+    margin-bottom: 9px;
+  }
+  .bilabel {
+    font-size: 10.5px;
+    margin-bottom: 3px;
+  }
+  input,
+  select,
+  textarea {
+    border-radius: 5px;
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+  textarea {
+    min-height: 42px;
+    line-height: 1.4;
+  }
+  .combo-btn {
+    font-size: 10.5px;
+    padding: 2px 6px;
+  }
+  .g2 {
+    gap: 8px;
+  }
+  .g3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .divider {
+    margin: 8px 0 !important;
+  }
+  .items-table {
+    table-layout: fixed;
+    margin-bottom: 6px;
+  }
+  .items-table thead th {
+    background: transparent;
+    border-top: 1px solid var(--border);
+    padding: 9px 8px;
+    color: #fff;
+    font-size: 12px;
+  }
+  body.light-theme .items-table thead th {
+    color: #344054;
+  }
+  .items-table thead th:nth-child(1) { width: 36px; }
+  .items-table thead th:nth-child(3) { width: 92px; }
+  .items-table thead th:nth-child(4) { width: 126px; }
+  .items-table thead th:nth-child(5) { width: 92px; }
+  .items-table thead th:nth-child(6) { width: 126px; }
+  .items-table thead th:nth-child(7) { width: 36px; }
+  .items-table tbody td {
+    padding: 6px 4px;
+    border-bottom-color: #373f4e;
+  }
+  .items-table tbody tr:nth-child(even) td,
+  .items-table tbody tr:nth-child(odd) td {
+    background: transparent;
+  }
+  .items-table tbody tr:hover td {
+    background: rgba(255,255,255,.035);
+  }
+  body.light-theme .items-table tbody td {
+    border-bottom-color: #e7ebf1;
+  }
+  body.light-theme .items-table tbody tr:hover td {
+    background: #f7f9fc;
+  }
+  .items-table tbody td input {
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 6px 5px;
+  }
+  body.light-theme .items-table tbody td input {
+    color: #172033;
+  }
+  .add-row-btn {
+    border-radius: 5px;
+    font-size: 11.5px;
+    margin-bottom: 7px;
+    padding: 6px;
+  }
+  .totals {
+    max-width: 390px;
+    margin-left: auto;
+    padding-top: 8px;
+  }
+  .total-row {
+    font-size: 12px;
+    padding: 3px 0;
+  }
+  .total-row.grand {
+    font-size: 14px;
+    margin-top: 5px;
+    padding-top: 7px;
+  }
+  .total-row.grand .amt {
+    font-size: 16px;
+  }
+  .written-box {
+    margin-top: 6px;
+    padding: 6px 10px;
+  }
+  .written-row {
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  .notes-fixed {
+    padding: 7px 10px;
+  }
+  .company-toggle {
+    padding: 7px 9px;
+  }
+  .company-toggle .hint {
+    display: none;
+  }
+  .container > .card:nth-of-type(5) {
+    min-height: 0;
+  }
+  .gen-btn {
+    border-radius: 7px;
+    font-size: 13px;
+    padding: 10px;
+  }
+  .action-bar {
+    grid-column: 3;
+    grid-row: 1 / span 3;
+    display: grid;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 14px;
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    align-content: start;
+  }
+  .action-bar .add-row-btn {
+    margin: 0;
+  }
+  .action-summary {
+    grid-template-columns: 1fr;
+  }
+  .action-summary > div,
+  .side-section {
+    background: #20242f;
+    border: 1px solid #383f50;
+    border-radius: 6px;
+    padding: 10px;
+    margin-top: 0;
+  }
+  body.light-theme .action-summary > div,
+  body.light-theme .side-section {
+    background: #f8fafc;
+    border-color: #d7dce5;
+  }
+  .side-section {
+    border-top: 1px solid #383f50;
+  }
+  body.light-theme .side-section {
+    border-top-color: #d7dce5;
+  }
+  body.light-theme .written-box {
+    background: #f8fafc;
+    border-color: #d7dce5;
+  }
+  body.light-theme .items-table tbody td input:focus {
+    background: #ffffff;
+  }
+  body.light-theme .money-symbol {
+    color: #667085;
+  }
+  body.light-theme .money-value {
+    color: #101828;
+  }
+}
+
+@media (max-width: 720px) {
+  body {
+    padding-bottom: 128px;
+  }
+  .topbar {
+    padding: 10px 12px;
+    flex-wrap: wrap;
+  }
+  .topbar-nav {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+    padding-bottom: 1px;
+  }
+  .nav-link {
+    white-space: nowrap;
+  }
+  .topbar-actions {
+    margin-left: auto;
+  }
+  .container {
+    padding: 10px 10px 0;
+  }
+  .card {
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .meta-card .g3,
+  .g2,
+  .g3 {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+  .action-bar {
+    display: none;
+  }
+  .items-table,
+  .items-table tbody,
+  .items-table tr,
+  .items-table td {
+    display: block;
+    width: 100%;
+  }
+  .items-table thead {
+    display: none;
+  }
+  .items-table tr {
+    position: relative;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 9px;
+  }
+  .items-table tbody tr:nth-child(even) td,
+  .items-table tbody td {
+    background: transparent;
+  }
+  .items-table tbody td {
+    border-bottom: 0;
+    padding: 5px 0;
+  }
+  .items-table tbody td:first-child {
+    color: var(--text2) !important;
+    text-align: left !important;
+    padding-bottom: 8px !important;
+  }
+  .items-table tbody td:not(:first-child):not(:last-child) {
+    display: grid;
+    grid-template-columns: 94px minmax(0, 1fr);
+    gap: 9px;
+    align-items: center;
+  }
+  .items-table tbody td:nth-child(2)::before { content: "Description"; }
+  .items-table tbody td:nth-child(3)::before { content: "Qty"; }
+  .items-table tbody td:nth-child(4)::before { content: "Unit price"; }
+  .items-table tbody td:nth-child(5)::before { content: "Discount"; }
+  .items-table tbody td:nth-child(6)::before { content: "Total"; }
+  .items-table tbody td:not(:first-child):not(:last-child)::before {
+    color: var(--text2);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .items-table tbody td input {
+    width: 100% !important;
+    min-height: 36px;
+    background: #1d2230;
+    border-color: var(--border);
+  }
+  .items-table tbody td.num {
+    text-align: right;
+  }
+  .items-table tbody td:last-child {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    width: auto;
+  }
+  body:not(.show-discount) .items-table tbody td.discount-col {
+    display: none;
+  }
+  body.show-discount .items-table tbody td.discount-col {
+    display: grid;
+  }
+  .toast {
+    bottom: 136px;
+    max-width: calc(100vw - 24px);
+    white-space: normal;
+    text-align: center;
+  }
+  .mobile-action-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 650;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(27,31,42,.96);
+    border-top: 1px solid var(--border2);
+    box-shadow: 0 -12px 30px rgba(0,0,0,.32);
+    backdrop-filter: blur(10px);
+  }
+  .card { overflow-x: auto; }
+  .settings-panel { grid-template-columns: 1fr; max-height: calc(100vh - 54px); }
+  .settings-side { min-height: 180px; max-height: 240px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .settings-form-grid { grid-template-columns: 1fr; }
+  .modal-backdrop { padding: 54px 8px 12px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div>
+    <div class="topbar-logo">Invoice Maker</div>
+    <div class="topbar-sub">صانع الفواتير</div>
+  </div>
+  <nav class="topbar-nav" aria-label="Main navigation">
+    <button class="nav-link active" type="button">Invoices</button>
+    <button class="nav-link" type="button" onclick="openSettings('companies')">Companies</button>
+    <button class="nav-link" type="button" onclick="openSettings()">Settings</button>
+  </nav>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <button class="auth-pill" id="supabase-auth-btn" type="button" onclick="openAuthModal()">Local data</button>
+    <button class="auth-signout" id="supabase-signout-btn" type="button" onclick="signOutSupabase()" style="display:none">Sign out</button>
+    <div style="font-size:11px;color:var(--text3);" id="inv-counter">INV-001</div>
+    <button class="icon-btn" onclick="openSettings()" title="Settings" aria-label="Open settings">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" stroke="currentColor" stroke-width="1.8"/>
+        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05a2 2 0 0 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.08a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.05.05a2 2 0 0 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.04A1.7 1.7 0 0 0 4.6 8.92a1.7 1.7 0 0 0-.34-1.87l-.05-.05a2 2 0 0 1 2.83-2.83l.05.05a1.7 1.7 0 0 0 1.87.34A1.7 1.7 0 0 0 10 3V3a2 2 0 0 1 4 0v.08a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.05-.05a2 2 0 0 1 2.83 2.83l-.05.05a1.7 1.7 0 0 0-.34 1.87A1.7 1.7 0 0 0 21 10h0a2 2 0 0 1 0 4h0A1.7 1.7 0 0 0 19.4 15Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="auth-modal" onclick="closeAuthOnBackdrop(event)" aria-hidden="true">
+  <div class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <h2 id="auth-title">Sign in</h2>
+    <p id="auth-copy">Use your Supabase user. Short names are mapped automatically, so amer becomes amer@invoice.local.</p>
+    <div class="auth-grid">
+      <div class="field">
+        <div class="bilabel"><span>User</span><span class="ar">User</span></div>
+        <input id="auth-username" autocomplete="username" placeholder="amer or amro">
+      </div>
+      <div class="field">
+        <div class="bilabel"><span>Password</span><span class="ar">Password</span></div>
+        <input id="auth-password" type="password" autocomplete="current-password" placeholder="12345678">
+      </div>
+    </div>
+    <div class="auth-actions">
+      <button class="secondary-btn" type="button" onclick="closeAuthModal()">Cancel</button>
+      <button class="primary-btn" id="auth-login-btn" type="button" onclick="signInSupabase()">Sign in</button>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ── LANGUAGE + META ────────────────────────────────────────────── -->
+  <div class="card meta-card">
+    <div class="card-title">INVOICE DETAILS / إعدادات الفاتورة</div>
+
+    <div class="g3">
+      <div class="field">
+        <div class="bilabel"><span>Invoice #</span><span class="ar">رقم الفاتورة</span></div>
+        <input id="inv-num" value="INV-001">
+      </div>
+      <div class="field">
+        <div class="bilabel"><span>Date</span><span class="ar">التاريخ</span></div>
+        <input type="date" id="inv-date">
+      </div>
+      <div class="field">
+        <div class="bilabel">
+          <span>Due Date <small style="color:var(--text3)">(optional)</small></span>
+          <span class="ar">الاستحقاق</span>
+        </div>
+        <div class="opt-row">
+          <input type="checkbox" id="chk-due" onchange="toggleDue()">
+          <label for="chk-due">Include</label>
+        </div>
+        <input type="date" id="inv-due" style="display:none;margin-top:6px">
+      </div>
+    </div>
+    <input type="hidden" id="currency" value="USD">
+    <input type="hidden" id="vat-pct" value="0">
+    <input type="hidden" id="doc-lang" value="bi">
+    <input type="hidden" id="invoice-template" value="aurora">
+  </div>
+
+  <!-- ── SELLER / COMPANY ──────────────────────────────────────────── -->
+  <div class="card seller-card">
+    <div class="card-title">SELLER / COMPANY</div>
+
+    <!-- Company selector -->
+    <div class="field" style="margin-bottom:12px">
+      <div class="bilabel">
+        <span>Company <small style="color:var(--text3)">(leave blank for individual)</small></span>
+        <span class="ar">الشركة / اتركه فارغاً للفرد</span>
+      </div>
+      <div class="combo-wrap" id="comp-combo">
+        <input id="s-name" placeholder="Type company name or leave blank…"
+          autocomplete="off"
+          oninput="onComboInput('company')"
+          onfocus="openDropdown('company')"
+          onblur="closeDropdownDelay('company')">
+        <div class="combo-actions">
+          <button class="combo-btn save" onclick="saveCompany()" title="Save this company">Save</button>
+          <button class="combo-btn del"  onclick="deleteCompany()" title="Delete selected company">Delete</button>
+        </div>
+        <div class="dropdown-list" id="comp-dropdown"></div>
+      </div>
+      <div class="opt-row company-toggle">
+        <div>
+          <label for="chk-individual-disclaimer">Individual invoice / فاتورة فردية</label>
+          <div class="hint">Adds the individual-service disclaimer to generated invoices.</div>
+        </div>
+        <input type="checkbox" id="chk-individual-disclaimer">
+      </div>
+    </div>
+
+    <div class="g2">
+      <div class="field">
+        <div class="bilabel"><span>Address <small style="color:var(--text3)">(opt.)</small></span><span class="ar">العنوان</span></div>
+        <input id="s-addr" placeholder="123 Main St, City">
+      </div>
+      <div class="field">
+        <div class="bilabel"><span>Phone <small style="color:var(--text3)">(opt.)</small></span><span class="ar">الهاتف</span></div>
+        <input id="s-phone" placeholder="+1 555 000 0000">
+      </div>
+    </div>
+    <div class="field" style="margin-top:10px">
+      <div class="bilabel"><span>Email <small style="color:var(--text3)">(opt.)</small></span><span class="ar">البريد الإلكتروني</span></div>
+      <input id="s-email" type="email" placeholder="hello@company.com">
+    </div>
+  </div>
+
+  <!-- ── BUYER / CLIENT ────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">BUYER / CLIENT</div>
+
+    <div class="field" style="margin-bottom:12px">
+      <div class="bilabel"><span>Client Name</span><span class="ar">اسم العميل</span></div>
+      <div class="combo-wrap" id="cust-combo">
+        <input id="b-name" placeholder="Type or select client name…"
+          autocomplete="off"
+          oninput="onComboInput('customer')"
+          onfocus="openDropdown('customer')"
+          onblur="closeDropdownDelay('customer')">
+        <div class="combo-actions">
+          <button class="combo-btn save" onclick="saveCustomer()" title="Save this client">Save</button>
+          <button class="combo-btn del"  onclick="deleteCustomer()" title="Delete selected client">Delete</button>
+        </div>
+        <div class="dropdown-list" id="cust-dropdown"></div>
+      </div>
+    </div>
+
+    <div class="g2">
+      <div class="field">
+        <div class="bilabel"><span>Address <small style="color:var(--text3)">(opt.)</small></span><span class="ar">العنوان</span></div>
+        <input id="b-addr" placeholder="">
+      </div>
+      <div class="field">
+        <div class="bilabel"><span>Phone <small style="color:var(--text3)">(opt.)</small></span><span class="ar">الهاتف</span></div>
+        <input id="b-phone" placeholder="">
+      </div>
+    </div>
+    <div class="field" style="margin-top:10px">
+      <div class="bilabel"><span>Email <small style="color:var(--text3)">(opt.)</small></span><span class="ar">البريد الإلكتروني</span></div>
+      <input id="b-email" type="email" placeholder="">
+    </div>
+  </div>
+
+  <!-- ── LINE ITEMS ────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">LINE ITEMS / البنود</div>
+
+    <div class="opt-row" style="margin-bottom:10px">
+      <input type="checkbox" id="chk-discount" onchange="toggleDiscount()">
+      <label for="chk-discount">Include discount / خصم</label>
+    </div>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Description / الوصف</th>
+          <th class="r">Qty / الكمية</th>
+          <th class="r">Unit Price / سعر</th>
+          <th class="r discount-col">Disc% / خصم</th>
+          <th class="r">Total / مجموع</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="items-body"></tbody>
+    </table>
+
+    <button class="add-row-btn" onclick="addRow()">Add item / إضافة بند</button>
+
+    <!-- Totals -->
+    <div class="totals">
+      <div class="total-row"><span class="lbl">Subtotal / مجموع فرعي</span><span class="amt" id="t-sub">USD 0.00</span></div>
+      <div class="total-row" id="disc-row" style="display:none">
+        <span class="lbl" style="color:#86efac">Discount / خصم</span>
+        <span class="amt" style="color:#86efac" id="t-disc">- USD 0.00</span>
+      </div>
+      <div class="total-row" id="vat-row" style="display:none">
+        <span class="lbl" id="t-vat-lbl">VAT (0%) / ضريبة</span>
+        <span class="amt" id="t-vat">USD 0.00</span>
+      </div>
+      <div class="total-row grand">
+        <span class="lbl">Grand Total / الإجمالي الكلي</span>
+        <span class="amt" id="t-grand">USD 0.00</span>
+      </div>
+    </div>
+
+    <!-- Written amount -->
+    <div class="written-box">
+      <div class="written-row">
+        <span class="wlabel">Amount in words: </span>
+        <span class="wval" id="w-en">Zero US Dollars Only</span>
+      </div>
+      <div class="written-row ar-row">
+        <span class="wlabel">المبلغ كتابةً: </span>
+        <span class="wval" id="w-ar">صفر دولار أمريكي فقط</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── NOTES ─────────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">NOTES / ملاحظات</div>
+    <div class="field">
+      <div class="bilabel"><span>Additional notes</span><span class="ar">ملاحظات إضافية</span></div>
+      <textarea id="notes" placeholder="Payment terms, bank details…"></textarea>
+    </div>
+    <div class="notes-fixed">
+      <span class="thanks-stack">
+        <span>Always included: <strong>Thank you for your business!</strong></span>
+        <strong class="ar">شكراً لتعاملكم معنا</strong>
+      </span>
+    </div>
+  </div>
+
+  <!-- ── GENERATE ───────────────────────────────────────────────────── -->
+  <div class="action-bar">
+  <div class="action-summary">
+    <div>
+      <span class="summary-label">Current total</span>
+      <strong id="action-total">USD 0.00</strong>
+    </div>
+    <div>
+      <span class="summary-label">Design</span>
+      <strong id="action-template">Aurora</strong>
+    </div>
+  </div>
+  <button class="gen-btn" id="gen-btn" onclick="generateInvoice()">
+    Generate Invoice (.docx) / إنشاء الفاتورة
+  </button>
+  <button class="gen-btn pdf-btn" onclick="printPdfInvoice()">
+    Print PDF preview / طباعة PDF
+  </button>
+  <div class="side-section">
+    <div class="side-title">Design</div>
+    <div class="field">
+      <div class="bilabel"><span>Template</span><span class="ar">التصميم</span></div>
+      <select id="side-template" onchange="setTemplateFromSidePanel()">
+        <option value="aurora">Aurora</option>
+        <option value="meridian">Meridian</option>
+        <option value="meridian_v2">Meridian v2</option>
+        <option value="obsidian">Obsidian</option>
+        <option value="classic">Classic</option>
+      </select>
+    </div>
+  </div>
+  <div class="side-section">
+    <div class="side-title">Invoice status</div>
+    <div class="side-kv">
+      <span><em>State</em><strong>Draft</strong></span>
+      <span><em>Output</em><strong>DOCX + PDF</strong></span>
+    </div>
+  </div>
+  <div class="side-section">
+    <div class="side-title">Configuration</div>
+    <p class="side-note">Company, language, currency, template, and individual defaults live in settings.</p>
+    <button class="add-row-btn" type="button" onclick="openSettings()">Open settings</button>
+  </div>
+  <div class="side-section">
+    <div class="side-title">Activity</div>
+    <p class="side-note">Creating a new invoice...</p>
+  </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<div class="mobile-action-bar" aria-label="Mobile invoice actions">
+  <div class="mobile-bar-meta">
+    <strong id="mobile-total">USD 0.00</strong>
+    <span id="mobile-pdf-status">No PDF generated yet</span>
+  </div>
+  <div class="mobile-actions">
+    <button class="mobile-action-btn primary" id="mobile-pdf-btn" type="button" onclick="generateMobilePdf()">Generate PDF</button>
+    <button class="mobile-action-btn" id="mobile-open-btn" type="button" onclick="openLastPdf()" disabled>Open</button>
+    <button class="mobile-action-btn" id="mobile-share-btn" type="button" onclick="shareMobilePdf()" disabled>Share</button>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="modal-backdrop" id="settings-modal" onclick="closeSettingsOnBackdrop(event)" aria-hidden="true">
+  <div class="settings-panel document-mode" id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <aside class="settings-side">
+      <div class="settings-head">
+        <div>
+          <div class="settings-title" id="settings-title">Settings</div>
+          <div class="settings-sub">Defaults & Companies</div>
+        </div>
+        <button class="icon-btn" onclick="closeSettings()" title="Close settings" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="company-list" id="settings-company-list"></div>
+    </aside>
+
+    <section class="settings-main" data-tab="document">
+      <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button class="settings-tab active" id="settings-tab-document" type="button" onclick="setSettingsTab('document')">Document</button>
+        <button class="settings-tab" id="settings-tab-companies" type="button" onclick="setSettingsTab('companies')">Companies</button>
+      </div>
+
+      <div class="settings-toolbar settings-companies-only">
+        <button class="secondary-btn" onclick="newSettingsCompany()">New company</button>
+        <button class="secondary-btn" onclick="refreshSettingsCompanies()">Refresh</button>
+      </div>
+
+      <div class="settings-defaults settings-document-only">
+        <div class="card" style="padding:12px;margin-bottom:14px;background:var(--surface)">
+          <div class="card-title" style="margin-bottom:10px">DOCUMENT DEFAULTS</div>
+          <div class="settings-form-grid">
+            <div class="theme-switch">
+              <div>
+                <div class="settings-section-title" style="margin:0">Light mode</div>
+                <div class="settings-section-sub" style="margin:2px 0 0">Use a brighter workspace and settings panel.</div>
+              </div>
+              <label class="switch-control" for="settings-theme-toggle">
+                <input type="checkbox" id="settings-theme-toggle" onchange="toggleThemeSetting()">
+                <span class="switch-track"></span>
+              </label>
+            </div>
+            <div class="field">
+              <div class="bilabel"><span>UI language</span><span class="ar">لغة الواجهة</span></div>
+              <select id="settings-ui-lang" onchange="saveDocumentSettings()">
+                <option value="en">English</option>
+                <option value="ar">Arabic / عربي</option>
+                <option value="bi">Bilingual / ثنائي</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="bilabel"><span>Document language</span><span class="ar">لغة المستند</span></div>
+              <select id="settings-doc-lang" onchange="saveDocumentSettings()">
+                <option value="en">English</option>
+                <option value="ar">Arabic / عربي</option>
+                <option value="bi">Bilingual / ثنائي</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="bilabel"><span>Invoice design</span><span class="ar">تصميم الفاتورة</span></div>
+              <select id="settings-template" onchange="saveDocumentSettings()">
+                <option value="aurora">Aurora</option>
+                <option value="meridian">Meridian</option>
+                <option value="meridian_v2">Meridian v2</option>
+                <option value="obsidian">Obsidian</option>
+                <option value="classic">Classic</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="bilabel"><span>Default currency</span><span class="ar">العملة الافتراضية</span></div>
+              <select id="settings-currency" onchange="saveDocumentSettings()">
+                <option value="USD">USD - US Dollar</option>
+                <option value="LBP">LBP - Lebanese Pound</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="bilabel"><span>VAT %</span><span class="ar">ضريبة %</span></div>
+              <input type="number" id="settings-vat-pct" value="0" min="0" max="100" onchange="saveDocumentSettings()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-companies-only">
+        <div class="settings-section-title">Company profiles</div>
+        <p class="settings-section-sub">Add, edit, delete, or load seller profiles. The individual invoice option is saved per company.</p>
+      </div>
+
+      <div class="settings-form-grid settings-companies-only">
+        <div class="field full">
+          <div class="bilabel"><span>Company name</span><span class="ar">اسم الشركة</span></div>
+          <input id="set-company-name" placeholder="Company name">
+        </div>
+        <div class="field full">
+          <div class="bilabel"><span>Address</span><span class="ar">العنوان</span></div>
+          <input id="set-company-addr" placeholder="Street, city, country">
+        </div>
+        <div class="field">
+          <div class="bilabel"><span>Phone</span><span class="ar">الهاتف</span></div>
+          <input id="set-company-phone" placeholder="+961 ...">
+        </div>
+        <div class="field">
+          <div class="bilabel"><span>Email</span><span class="ar">البريد الإلكتروني</span></div>
+          <input id="set-company-email" type="email" placeholder="billing@company.com">
+        </div>
+        <div class="opt-row company-toggle settings-toggle">
+          <div>
+            <label for="set-company-individual">Individual invoice / فاتورة فردية</label>
+            <div class="hint">Save this as the default for this company profile.</div>
+          </div>
+          <input type="checkbox" id="set-company-individual">
+        </div>
+      </div>
+
+      <div class="settings-actions settings-companies-only">
+        <button class="primary-btn" onclick="saveSettingsCompany()">Save company</button>
+        <button class="secondary-btn" onclick="useSettingsCompanyOnInvoice()">Use on invoice</button>
+        <button class="danger-btn" onclick="deleteSettingsCompany()">Delete</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let companies  = [];
+let customers  = [];
+let rowCount   = 0;
+let selCompId  = null;
+let selCustId  = null;
+let settingsCompanyId = null;
+let lastGeneratedPdf = null;
+let settingsActiveTab = 'document';
+let supabaseClient = null;
+let supabaseUser = null;
+let supabaseConfigured = false;
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  // Set today's date
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('inv-date').value = today;
+  document.getElementById('inv-due').value  = new Date(Date.now() + 7*864e5).toISOString().split('T')[0];
+  loadDocumentSettings();
+  await initSupabaseAuth();
+  await loadInvoiceNumber();
+
+  await loadCompanies();
+  await loadCustomers();
+  toggleDiscount();
+  addRow();
+});
+
+// ── Language toggle ────────────────────────────────────────────────────────
+// ── Due date toggle ────────────────────────────────────────────────────────
+function toggleDue() {
+  const chk = document.getElementById('chk-due');
+  const inp = document.getElementById('inv-due');
+  inp.style.display = chk.checked ? 'block' : 'none';
+}
+
+function toggleDiscount() {
+  document.body.classList.toggle('show-discount', document.getElementById('chk-discount').checked);
+  recalc();
+}
+
+// Settings
+function applyTheme(theme) {
+  const normalized = theme === 'light' ? 'light' : 'dark';
+  document.body.classList.toggle('light-theme', normalized === 'light');
+  const toggle = document.getElementById('settings-theme-toggle');
+  if (toggle) toggle.checked = normalized === 'light';
+}
+
+async function toggleThemeSetting() {
+  const theme = document.getElementById('settings-theme-toggle').checked ? 'light' : 'dark';
+  localStorage.setItem('inv_theme', theme);
+  applyTheme(theme);
+  await saveRemoteDocumentSettings();
+  toast(theme === 'light' ? 'Light mode enabled' : 'Dark mode enabled', 'success');
+}
+
+function loadDocumentSettings() {
+  const saved = localStorage.getItem('inv_default_currency') || 'USD';
+  const currency = saved === 'LBP' ? 'LBP' : 'USD';
+  const uiLang = ['en', 'ar', 'bi'].includes(localStorage.getItem('inv_ui_lang')) ? localStorage.getItem('inv_ui_lang') : 'bi';
+  const lang = ['en', 'ar', 'bi'].includes(localStorage.getItem('inv_doc_lang')) ? localStorage.getItem('inv_doc_lang') : 'bi';
+  const template = normalizeTemplate(localStorage.getItem('inv_template') || 'aurora');
+  const vatPct = localStorage.getItem('inv_vat_pct') || '0';
+  const theme = localStorage.getItem('inv_theme') === 'light' ? 'light' : 'dark';
+  applyTheme(theme);
+
+  document.getElementById('currency').value = currency;
+  document.getElementById('doc-lang').value = lang;
+  document.getElementById('invoice-template').value = template;
+  document.getElementById('vat-pct').value = vatPct;
+
+  if (document.getElementById('settings-currency')) document.getElementById('settings-currency').value = currency;
+  if (document.getElementById('settings-ui-lang')) document.getElementById('settings-ui-lang').value = uiLang;
+  if (document.getElementById('settings-doc-lang')) document.getElementById('settings-doc-lang').value = lang;
+  if (document.getElementById('settings-template')) document.getElementById('settings-template').value = template;
+  if (document.getElementById('side-template')) document.getElementById('side-template').value = template;
+  if (document.getElementById('settings-vat-pct')) document.getElementById('settings-vat-pct').value = vatPct;
+  recalc();
+  updateActionSummary();
+}
+
+function currentDocumentSettings() {
+  const currency = document.getElementById('currency').value === 'LBP' ? 'LBP' : 'USD';
+  const uiLang = ['en', 'ar', 'bi'].includes(localStorage.getItem('inv_ui_lang')) ? localStorage.getItem('inv_ui_lang') : 'bi';
+  return {
+    currency,
+    ui_language: uiLang,
+    doc_language: document.getElementById('doc-lang').value || 'bi',
+    template: normalizeTemplate(document.getElementById('invoice-template').value),
+    vat_pct: parseFloat(document.getElementById('vat-pct').value) || 0,
+    theme: document.body.classList.contains('light-theme') ? 'light' : 'dark',
+  };
+}
+
+async function loadRemoteDocumentSettings() {
+  if (!supabaseActive()) return;
+  const { data, error } = await supabaseClient
+    .from('user_settings')
+    .select('currency,ui_language,doc_language,template,vat_pct,theme')
+    .eq('user_id', supabaseUser.id)
+    .maybeSingle();
+  if (error) {
+    toast(error.message || 'Could not load Supabase settings', 'error');
+    return;
+  }
+  if (!data) {
+    await saveRemoteDocumentSettings(false);
+    return;
+  }
+
+  localStorage.setItem('inv_default_currency', data.currency || 'USD');
+  localStorage.setItem('inv_ui_lang', data.ui_language || 'bi');
+  localStorage.setItem('inv_doc_lang', data.doc_language || 'bi');
+  localStorage.setItem('inv_template', normalizeTemplate(data.template || 'aurora'));
+  localStorage.setItem('inv_vat_pct', String(data.vat_pct || 0));
+  localStorage.setItem('inv_theme', data.theme === 'light' ? 'light' : 'dark');
+  loadDocumentSettings();
+}
+
+async function saveRemoteDocumentSettings(showError = true) {
+  if (!supabaseActive()) return;
+  const settings = currentDocumentSettings();
+  const { error } = await supabaseClient
+    .from('user_settings')
+    .upsert({ user_id: supabaseUser.id, ...settings }, { onConflict: 'user_id' });
+  if (error && showError) toast(error.message || 'Could not save Supabase settings', 'error');
+}
+
+async function saveDocumentSettings() {
+  const currency = document.getElementById('settings-currency').value === 'LBP' ? 'LBP' : 'USD';
+  const uiLang = ['en', 'ar', 'bi'].includes(document.getElementById('settings-ui-lang').value) ? document.getElementById('settings-ui-lang').value : 'bi';
+  const lang = ['en', 'ar', 'bi'].includes(document.getElementById('settings-doc-lang').value) ? document.getElementById('settings-doc-lang').value : 'bi';
+  const template = normalizeTemplate(document.getElementById('settings-template').value);
+  const vatPct = String(parseFloat(document.getElementById('settings-vat-pct').value) || 0);
+
+  localStorage.setItem('inv_default_currency', currency);
+  localStorage.setItem('inv_ui_lang', uiLang);
+  localStorage.setItem('inv_doc_lang', lang);
+  localStorage.setItem('inv_template', template);
+  localStorage.setItem('inv_vat_pct', vatPct);
+
+  document.getElementById('currency').value = currency;
+  document.getElementById('doc-lang').value = lang;
+  document.getElementById('invoice-template').value = template;
+  document.getElementById('vat-pct').value = vatPct;
+  if (document.getElementById('side-template')) document.getElementById('side-template').value = template;
+  recalc();
+  await saveRemoteDocumentSettings();
+  toast('Document settings saved', 'success');
+}
+
+async function setTemplateFromSidePanel() {
+  const template = normalizeTemplate(document.getElementById('side-template').value);
+  document.getElementById('invoice-template').value = template;
+  if (document.getElementById('settings-template')) document.getElementById('settings-template').value = template;
+  localStorage.setItem('inv_template', template);
+  await saveRemoteDocumentSettings();
+  updateActionSummary();
+  toast('Design updated', 'success');
+}
+
+function normalizeTemplate(value) {
+  const allowed = ['aurora', 'meridian', 'meridian_v2', 'obsidian', 'classic'];
+  return allowed.includes(value) ? value : 'aurora';
+}
+
+function templateLabel(value) {
+  return ({ aurora: 'Aurora', meridian: 'Meridian', meridian_v2: 'Meridian v2', obsidian: 'Obsidian', classic: 'Classic' })[value] || 'Aurora';
+}
+
+function updateActionSummary() {
+  const templateEl = document.getElementById('invoice-template');
+  const totalEl = document.getElementById('t-grand');
+  const actionTemplate = document.getElementById('action-template');
+  const actionTotal = document.getElementById('action-total');
+  const mobileTotal = document.getElementById('mobile-total');
+  if (actionTemplate && templateEl) actionTemplate.textContent = templateLabel(templateEl.value);
+  if (document.getElementById('side-template') && templateEl) document.getElementById('side-template').value = templateEl.value;
+  if (actionTotal && totalEl) actionTotal.textContent = totalEl.textContent;
+  if (mobileTotal && totalEl) mobileTotal.textContent = totalEl.textContent;
+  const genBtn = document.getElementById('gen-btn');
+  if (genBtn && !genBtn.disabled) {
+    genBtn.textContent = templateEl?.value === 'meridian_v2'
+      ? 'Generate Invoice (PDF) / إنشاء الفاتورة'
+      : 'Generate Invoice (.docx) / إنشاء الفاتورة';
+  }
+}
+
+function setSettingsTab(tab) {
+  settingsActiveTab = tab === 'companies' ? 'companies' : 'document';
+  const main = document.querySelector('.settings-main');
+  const panel = document.getElementById('settings-panel');
+  if (main) main.dataset.tab = settingsActiveTab;
+  if (panel) {
+    panel.classList.toggle('document-mode', settingsActiveTab === 'document');
+    panel.classList.toggle('companies-mode', settingsActiveTab === 'companies');
+  }
+  document.getElementById('settings-tab-document')?.classList.toggle('active', settingsActiveTab === 'document');
+  document.getElementById('settings-tab-companies')?.classList.toggle('active', settingsActiveTab === 'companies');
+  if (settingsActiveTab === 'companies') renderSettingsCompanyList();
+}
+
+function openSettings(tab = 'document') {
+  const modal = document.getElementById('settings-modal');
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  loadDocumentSettings();
+  setSettingsTab(tab);
+  renderSettingsCompanyList();
+  if (!settingsCompanyId && companies.length) selectSettingsCompany(companies[0].id);
+}
+
+function closeSettings() {
+  const modal = document.getElementById('settings-modal');
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function closeSettingsOnBackdrop(event) {
+  if (event.target.id === 'settings-modal') closeSettings();
+}
+
+function newSettingsCompany() {
+  settingsCompanyId = null;
+  ['set-company-name','set-company-addr','set-company-phone','set-company-email'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('set-company-individual').checked = false;
+  renderSettingsCompanyList();
+  document.getElementById('set-company-name').focus();
+}
+
+async function refreshSettingsCompanies() {
+  await loadCompanies();
+  if (settingsCompanyId && !companies.some(c => c.id === settingsCompanyId)) settingsCompanyId = null;
+  renderSettingsCompanyList();
+  toast('Companies refreshed', 'success');
+}
+
+function renderSettingsCompanyList() {
+  const list = document.getElementById('settings-company-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (!companies.length) {
+    const empty = document.createElement('div');
+    empty.className = 'settings-empty';
+    empty.textContent = 'No companies saved yet. Add your company details on the right.';
+    list.appendChild(empty);
+    return;
+  }
+  companies.forEach(company => {
+    const btn = document.createElement('button');
+    btn.className = 'company-item' + (company.id === settingsCompanyId ? ' active' : '');
+    btn.type = 'button';
+    btn.onclick = () => selectSettingsCompany(company.id);
+
+    const name = document.createElement('div');
+    name.className = 'company-item-name';
+    name.textContent = company.name || 'Unnamed company';
+
+    const meta = document.createElement('div');
+    meta.className = 'company-item-meta';
+    meta.textContent = [
+      company.individual_disclaimer ? 'Individual invoice' : '',
+      [company.phone, company.email].filter(Boolean).join(' - ') || company.address || 'No contact details'
+    ].filter(Boolean).join(' - ');
+
+    btn.appendChild(name);
+    btn.appendChild(meta);
+    list.appendChild(btn);
+  });
+}
+
+function selectSettingsCompany(id) {
+  const company = companies.find(c => c.id === id);
+  if (!company) return;
+  settingsCompanyId = id;
+  document.getElementById('set-company-name').value = company.name || '';
+  document.getElementById('set-company-addr').value = company.address || '';
+  document.getElementById('set-company-phone').value = company.phone || '';
+  document.getElementById('set-company-email').value = company.email || '';
+  document.getElementById('set-company-individual').checked = !!company.individual_disclaimer;
+  renderSettingsCompanyList();
+}
+
+function collectSettingsCompany() {
+  return {
+    id: settingsCompanyId || undefined,
+    name: document.getElementById('set-company-name').value.trim(),
+    address: document.getElementById('set-company-addr').value.trim(),
+    phone: document.getElementById('set-company-phone').value.trim(),
+    email: document.getElementById('set-company-email').value.trim(),
+    individual_disclaimer: document.getElementById('set-company-individual').checked,
+  };
+}
+
+async function saveSettingsCompany() {
+  const company = collectSettingsCompany();
+  if (!company.name) { toast('Enter a company name first', 'error'); return; }
+  if (supabaseActive()) {
+    const payload = {
+      name: company.name,
+      address: company.address,
+      phone: company.phone,
+      email: company.email,
+      individual_disclaimer: company.individual_disclaimer,
+    };
+    const query = company.id
+      ? supabaseClient.from('companies').update(payload).eq('id', company.id).select('id').single()
+      : supabaseClient.from('companies').insert({ ...payload, user_id: supabaseUser.id }).select('id').single();
+    const { data, error } = await query;
+    if (error) {
+      toast(error.message || 'Company save failed', 'error');
+      return;
+    }
+    settingsCompanyId = data.id;
+    selCompId = data.id;
+    await loadCompanies();
+    selectSettingsCompany(settingsCompanyId);
+    useSettingsCompanyOnInvoice(false);
+    toast('Company saved', 'success');
+    return;
+  }
+
+  try {
+    const r = await API('POST', '/api/companies', company);
+    settingsCompanyId = r.id;
+    selCompId = r.id;
+    await loadCompanies();
+  } catch {
+    if (!company.id) company.id = 'c' + Date.now();
+    const idx = companies.findIndex(c => c.id === company.id);
+    if (idx >= 0) companies[idx] = company; else companies.push(company);
+    settingsCompanyId = company.id;
+    selCompId = company.id;
+    localStorage.setItem('inv_companies', JSON.stringify(companies));
+    renderDropdown('company');
+    renderSettingsCompanyList();
+  }
+  selectSettingsCompany(settingsCompanyId);
+  useSettingsCompanyOnInvoice(false);
+  toast('Company saved', 'success');
+}
+
+async function deleteSettingsCompany() {
+  if (!settingsCompanyId) { toast('Select a company first', 'error'); return; }
+  const deletingId = settingsCompanyId;
+  if (supabaseActive()) {
+    const { error } = await supabaseClient.from('companies').delete().eq('id', deletingId);
+    if (error) {
+      toast(error.message || 'Company delete failed', 'error');
+      return;
+    }
+    await loadCompanies();
+    if (selCompId === deletingId) {
+      selCompId = null;
+      ['s-name','s-addr','s-phone','s-email'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('chk-individual-disclaimer').checked = false;
+    }
+    settingsCompanyId = companies[0]?.id || null;
+    if (settingsCompanyId) selectSettingsCompany(settingsCompanyId); else newSettingsCompany();
+    toast('Company deleted', 'success');
+    return;
+  }
+
+  try {
+    await API('DELETE', `/api/companies/${deletingId}`);
+    await loadCompanies();
+  } catch {
+    companies = companies.filter(c => c.id !== deletingId);
+    localStorage.setItem('inv_companies', JSON.stringify(companies));
+    renderDropdown('company');
+    renderSettingsCompanyList();
+  }
+  if (selCompId === deletingId) {
+    selCompId = null;
+    ['s-name','s-addr','s-phone','s-email'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('chk-individual-disclaimer').checked = false;
+  }
+  settingsCompanyId = companies[0]?.id || null;
+  if (settingsCompanyId) selectSettingsCompany(settingsCompanyId); else newSettingsCompany();
+  toast('Company deleted', 'success');
+}
+
+function useSettingsCompanyOnInvoice(showToast = true) {
+  const company = settingsCompanyId ? companies.find(c => c.id === settingsCompanyId) : collectSettingsCompany();
+  if (!company || !company.name) { toast('Select or save a company first', 'error'); return; }
+  applyCompanyToInvoice(company);
+  renderDropdown('company');
+  if (showToast) toast('Company loaded on invoice', 'success');
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeSettings();
+    closeAuthModal();
+  }
+});
+
+// ── API helpers ────────────────────────────────────────────────────────────
+const API = async (method, url, body) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  try {
+    const r = await fetch(url, { ...opts, signal: controller.signal });
+    return r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+function supabaseActive() {
+  return !!(supabaseClient && supabaseUser);
+}
+
+function usernameToEmail(value) {
+  const clean = String(value || '').trim().toLowerCase();
+  if (!clean) return '';
+  return clean.includes('@') ? clean : `${clean}@invoice.local`;
+}
+
+function authDisplayName() {
+  const email = supabaseUser?.email || '';
+  return email.endsWith('@invoice.local') ? email.replace('@invoice.local', '') : email;
+}
+
+function updateAuthUi() {
+  const btn = document.getElementById('supabase-auth-btn');
+  const signout = document.getElementById('supabase-signout-btn');
+  if (!btn || !signout) return;
+
+  btn.classList.toggle('online', supabaseActive());
+  if (supabaseActive()) {
+    btn.textContent = `Signed in: ${authDisplayName()}`;
+    signout.style.display = 'inline';
+  } else if (supabaseConfigured) {
+    btn.textContent = 'Sign in';
+    signout.style.display = 'none';
+  } else {
+    btn.textContent = 'Local data';
+    signout.style.display = 'none';
+  }
+}
+
+async function initSupabaseAuth() {
+  try {
+    const config = await API('GET', '/api/supabase-config');
+    supabaseConfigured = !!config.enabled;
+    if (!supabaseConfigured) {
+      updateAuthUi();
+      return;
+    }
+
+    const module = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+    supabaseClient = module.createClient(config.url, config.anon_key);
+    const { data } = await supabaseClient.auth.getSession();
+    supabaseUser = data?.session?.user || null;
+    updateAuthUi();
+    if (supabaseUser) await loadRemoteDocumentSettings();
+
+    supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+      supabaseUser = session?.user || null;
+      updateAuthUi();
+      if (supabaseUser) {
+        await loadRemoteDocumentSettings();
+      }
+      await loadCompanies();
+      await loadCustomers();
+    });
+  } catch (err) {
+    supabaseConfigured = false;
+    supabaseClient = null;
+    supabaseUser = null;
+    updateAuthUi();
+  }
+}
+
+function openAuthModal() {
+  if (!supabaseConfigured) {
+    toast('Add data/supabase_config.json to enable Supabase login', 'error');
+    return;
+  }
+  const modal = document.getElementById('auth-modal');
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  setTimeout(() => document.getElementById('auth-username')?.focus(), 30);
+}
+
+function closeAuthModal() {
+  const modal = document.getElementById('auth-modal');
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function closeAuthOnBackdrop(event) {
+  if (event.target.id === 'auth-modal') closeAuthModal();
+}
+
+async function signInSupabase() {
+  if (!supabaseClient) {
+    toast('Supabase is not configured yet', 'error');
+    return;
+  }
+  const btn = document.getElementById('auth-login-btn');
+  const previous = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  try {
+    const email = usernameToEmail(document.getElementById('auth-username').value);
+    const password = document.getElementById('auth-password').value;
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    supabaseUser = data.user;
+    updateAuthUi();
+    closeAuthModal();
+    await loadRemoteDocumentSettings();
+    await loadCompanies();
+    await loadCustomers();
+    toast('Signed in', 'success');
+  } catch (err) {
+    toast(err.message || 'Sign in failed', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = previous;
+  }
+}
+
+async function signOutSupabase() {
+  if (supabaseClient) await supabaseClient.auth.signOut();
+  supabaseUser = null;
+  companies = [];
+  customers = [];
+  selCompId = null;
+  selCustId = null;
+  updateAuthUi();
+  loadDocumentSettings();
+  await loadCompanies();
+  await loadCustomers();
+  toast('Signed out', 'success');
+}
+
+async function loadInvoiceNumber() {
+  try {
+    const r = await API('GET', '/api/invoice-number');
+    setInvoiceNumber(r.invoice_number || 'INV-001');
+  } catch {
+    setInvoiceNumber(localStorage.getItem('inv_next_number') || 'INV-001');
+  }
+}
+
+function setInvoiceNumber(value) {
+  const next = value || 'INV-001';
+  document.getElementById('inv-num').value = next;
+  document.getElementById('inv-counter').textContent = next;
+  localStorage.setItem('inv_next_number', next);
+}
+
+function normalizeCompany(company) {
+  return {
+    ...company,
+    individual_disclaimer: !!company.individual_disclaimer,
+  };
+}
+
+// ── Companies ──────────────────────────────────────────────────────────────
+async function loadCompanies() {
+  if (supabaseActive()) {
+    const { data, error } = await supabaseClient
+      .from('companies')
+      .select('id,name,address,phone,email,individual_disclaimer')
+      .order('created_at', { ascending: true });
+    if (error) {
+      toast(error.message || 'Could not load companies', 'error');
+      companies = [];
+    } else {
+      companies = (data || []).map(normalizeCompany);
+      if (!selCompId && companies.length) applyCompanyToInvoice(companies[0]);
+    }
+    renderDropdown('company');
+    renderSettingsCompanyList();
+    return;
+  }
+
+  try {
+    companies = (await API('GET', '/api/companies')).map(normalizeCompany);
+    if (!selCompId && companies.length) applyCompanyToInvoice(companies[0]);
+    renderDropdown('company');
+    renderSettingsCompanyList();
+  } catch { /* server may not be running, use localStorage fallback */ 
+    const stored = localStorage.getItem('inv_companies');
+    companies = stored ? JSON.parse(stored).map(normalizeCompany) : [];
+    if (!selCompId && companies.length) applyCompanyToInvoice(companies[0]);
+    renderDropdown('company');
+    renderSettingsCompanyList();
+  }
+}
+
+function applyCompanyToInvoice(company) {
+  if (!company) return;
+  selCompId = company.id || null;
+  document.getElementById('s-name').value = company.name || '';
+  document.getElementById('s-addr').value = company.address || '';
+  document.getElementById('s-phone').value = company.phone || '';
+  document.getElementById('s-email').value = company.email || '';
+  document.getElementById('chk-individual-disclaimer').checked = !!company.individual_disclaimer;
+}
+
+async function saveCompany() {
+  const name  = document.getElementById('s-name').value.trim();
+  if (!name) { toast('Enter a company name first', 'error'); return; }
+  const comp = {
+    id:      selCompId || undefined,
+    name,
+    address: document.getElementById('s-addr').value.trim(),
+    phone:   document.getElementById('s-phone').value.trim(),
+    email:   document.getElementById('s-email').value.trim(),
+    individual_disclaimer: document.getElementById('chk-individual-disclaimer').checked,
+  };
+  if (supabaseActive()) {
+    const payload = {
+      name: comp.name,
+      address: comp.address,
+      phone: comp.phone,
+      email: comp.email,
+      individual_disclaimer: comp.individual_disclaimer,
+    };
+    const query = comp.id
+      ? supabaseClient.from('companies').update(payload).eq('id', comp.id).select('id').single()
+      : supabaseClient.from('companies').insert({ ...payload, user_id: supabaseUser.id }).select('id').single();
+    const { data, error } = await query;
+    if (error) {
+      toast(error.message || 'Company save failed', 'error');
+      return;
+    }
+    selCompId = data.id;
+    await loadCompanies();
+    toast('Company saved', 'success');
+    return;
+  }
+
+  try {
+    const r = await API('POST', '/api/companies', comp);
+    selCompId = r.id;
+    await loadCompanies();
+    toast('Company saved ✓', 'success');
+  } catch {
+    // localStorage fallback
+    if (!comp.id) comp.id = 'c' + Date.now();
+    const idx = companies.findIndex(c => c.id === comp.id);
+    if (idx >= 0) companies[idx] = comp; else companies.push(comp);
+    localStorage.setItem('inv_companies', JSON.stringify(companies));
+    selCompId = comp.id;
+    renderDropdown('company');
+    renderSettingsCompanyList();
+    toast('Company saved ✓', 'success');
+  }
+}
+
+async function deleteCompany() {
+  if (!selCompId) { toast('Select a saved company first', 'error'); return; }
+  const deletingId = selCompId;
+  if (supabaseActive()) {
+    const { error } = await supabaseClient.from('companies').delete().eq('id', deletingId);
+    if (error) {
+      toast(error.message || 'Company delete failed', 'error');
+      return;
+    }
+    await loadCompanies();
+    if (settingsCompanyId === deletingId) settingsCompanyId = null;
+    selCompId = null;
+    ['s-name','s-addr','s-phone','s-email'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('chk-individual-disclaimer').checked = false;
+    toast('Company deleted', 'success');
+    return;
+  }
+
+  try {
+    await API('DELETE', `/api/companies/${deletingId}`);
+    await loadCompanies();
+  } catch {
+    companies = companies.filter(c => c.id !== deletingId);
+    localStorage.setItem('inv_companies', JSON.stringify(companies));
+    renderDropdown('company');
+    renderSettingsCompanyList();
+  }
+  if (settingsCompanyId === deletingId) settingsCompanyId = null;
+  selCompId = null;
+  ['s-name','s-addr','s-phone','s-email'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('chk-individual-disclaimer').checked = false;
+  toast('Company deleted', 'success');
+}
+
+// ── Customers ──────────────────────────────────────────────────────────────
+async function loadCustomers() {
+  if (supabaseActive()) {
+    const { data, error } = await supabaseClient
+      .from('customers')
+      .select('id,name,address,phone,email')
+      .order('created_at', { ascending: true });
+    if (error) {
+      toast(error.message || 'Could not load clients', 'error');
+      customers = [];
+    } else {
+      customers = data || [];
+    }
+    renderDropdown('customer');
+    return;
+  }
+
+  try {
+    customers = await API('GET', '/api/customers');
+    renderDropdown('customer');
+  } catch {
+    const stored = localStorage.getItem('inv_customers');
+    customers = stored ? JSON.parse(stored) : [];
+    renderDropdown('customer');
+  }
+}
+
+async function saveCustomer() {
+  const name = document.getElementById('b-name').value.trim();
+  if (!name) { toast('Enter a client name first', 'error'); return; }
+  const cust = {
+    id:      selCustId || undefined,
+    name,
+    address: document.getElementById('b-addr').value.trim(),
+    phone:   document.getElementById('b-phone').value.trim(),
+    email:   document.getElementById('b-email').value.trim(),
+  };
+  if (supabaseActive()) {
+    const payload = {
+      name: cust.name,
+      address: cust.address,
+      phone: cust.phone,
+      email: cust.email,
+    };
+    const query = cust.id
+      ? supabaseClient.from('customers').update(payload).eq('id', cust.id).select('id').single()
+      : supabaseClient.from('customers').insert({ ...payload, user_id: supabaseUser.id }).select('id').single();
+    const { data, error } = await query;
+    if (error) {
+      toast(error.message || 'Client save failed', 'error');
+      return;
+    }
+    selCustId = data.id;
+    await loadCustomers();
+    toast('Client saved', 'success');
+    return;
+  }
+
+  try {
+    const r = await API('POST', '/api/customers', cust);
+    selCustId = r.id;
+    await loadCustomers();
+    toast('Client saved ✓', 'success');
+  } catch {
+    if (!cust.id) cust.id = 'cu' + Date.now();
+    const idx = customers.findIndex(c => c.id === cust.id);
+    if (idx >= 0) customers[idx] = cust; else customers.push(cust);
+    localStorage.setItem('inv_customers', JSON.stringify(customers));
+    selCustId = cust.id;
+    renderDropdown('customer');
+    toast('Client saved ✓', 'success');
+  }
+}
+
+async function deleteCustomer() {
+  if (!selCustId) { toast('Select a saved client first', 'error'); return; }
+  if (supabaseActive()) {
+    const { error } = await supabaseClient.from('customers').delete().eq('id', selCustId);
+    if (error) {
+      toast(error.message || 'Client delete failed', 'error');
+      return;
+    }
+    await loadCustomers();
+    selCustId = null;
+    ['b-name','b-addr','b-phone','b-email'].forEach(id => document.getElementById(id).value = '');
+    toast('Client deleted', 'success');
+    return;
+  }
+
+  try {
+    await API('DELETE', `/api/customers/${selCustId}`);
+    await loadCustomers();
+  } catch {
+    customers = customers.filter(c => c.id !== selCustId);
+    localStorage.setItem('inv_customers', JSON.stringify(customers));
+    renderDropdown('customer');
+  }
+  selCustId = null;
+  ['b-name','b-addr','b-phone','b-email'].forEach(id => document.getElementById(id).value = '');
+  toast('Client deleted', 'success');
+}
+
+// ── Dropdown rendering ─────────────────────────────────────────────────────
+function renderDropdown(type) {
+  const isComp = type === 'company';
+  const list   = isComp ? companies : customers;
+  const ddId   = isComp ? 'comp-dropdown' : 'cust-dropdown';
+  const dd     = document.getElementById(ddId);
+  const filter = (isComp ? document.getElementById('s-name') : document.getElementById('b-name')).value.toLowerCase();
+
+  const filtered = list.filter(item =>
+    !filter || item.name.toLowerCase().includes(filter));
+
+  dd.innerHTML = '';
+  if (!filtered.length) {
+    dd.innerHTML = `<div class="dropdown-item" style="color:var(--text3);font-size:12px">No saved ${isComp?'companies':'clients'}</div>`;
+  } else {
+    filtered.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'dropdown-item';
+      div.innerHTML = `
+        <div>
+          <div class="di-name">${item.name}</div>
+          <div class="di-sub">${[item.phone, item.email].filter(Boolean).join(' · ') || '—'}</div>
+        </div>
+        <span class="di-del" title="Delete" onclick="event.stopPropagation();quickDelete('${type}','${item.id}')">×</span>`;
+      div.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('di-del')) return;
+        selectItem(type, item);
+      });
+      dd.appendChild(div);
+    });
+  }
+}
+
+function selectItem(type, item) {
+  if (type === 'company') {
+    applyCompanyToInvoice(item);
+    closeDropdown('company');
+  } else {
+    selCustId = item.id;
+    document.getElementById('b-name').value  = item.name    || '';
+    document.getElementById('b-addr').value  = item.address || '';
+    document.getElementById('b-phone').value = item.phone   || '';
+    document.getElementById('b-email').value = item.email   || '';
+    closeDropdown('customer');
+  }
+}
+
+async function quickDelete(type, id) {
+  if (type === 'company') {
+    if (supabaseActive()) {
+      const { error } = await supabaseClient.from('companies').delete().eq('id', id);
+      if (error) { toast(error.message || 'Company delete failed', 'error'); return; }
+      await loadCompanies();
+      if (selCompId === id) {
+        selCompId = null;
+        ['s-name','s-addr','s-phone','s-email'].forEach(fieldId => document.getElementById(fieldId).value = '');
+        document.getElementById('chk-individual-disclaimer').checked = false;
+      }
+      if (settingsCompanyId === id) settingsCompanyId = null;
+      renderDropdown('company');
+      renderSettingsCompanyList();
+      return;
+    }
+    companies = companies.filter(c => c.id !== id);
+    localStorage.setItem('inv_companies', JSON.stringify(companies));
+    try { await API('DELETE', `/api/companies/${id}`); } catch {}
+    if (selCompId === id) {
+      selCompId = null;
+      ['s-name','s-addr','s-phone','s-email'].forEach(fieldId => document.getElementById(fieldId).value = '');
+      document.getElementById('chk-individual-disclaimer').checked = false;
+    }
+    if (settingsCompanyId === id) settingsCompanyId = null;
+    renderDropdown('company');
+    renderSettingsCompanyList();
+  } else {
+    if (supabaseActive()) {
+      const { error } = await supabaseClient.from('customers').delete().eq('id', id);
+      if (error) { toast(error.message || 'Client delete failed', 'error'); return; }
+      await loadCustomers();
+      if (selCustId === id) selCustId = null;
+      renderDropdown('customer');
+      return;
+    }
+    customers = customers.filter(c => c.id !== id);
+    localStorage.setItem('inv_customers', JSON.stringify(customers));
+    try { await API('DELETE', `/api/customers/${id}`); } catch {}
+    if (selCustId === id) selCustId = null;
+    renderDropdown('customer');
+  }
+}
+
+function onComboInput(type) {
+  if (type === 'company') selCompId = null;
+  else selCustId = null;
+  renderDropdown(type);
+  openDropdown(type);
+}
+
+function openDropdown(type) {
+  document.getElementById(type === 'company' ? 'comp-dropdown' : 'cust-dropdown').classList.add('open');
+  renderDropdown(type);
+}
+
+function closeDropdown(type) {
+  document.getElementById(type === 'company' ? 'comp-dropdown' : 'cust-dropdown').classList.remove('open');
+}
+
+function closeDropdownDelay(type) {
+  setTimeout(() => closeDropdown(type), 180);
+}
+
+// ── Items ──────────────────────────────────────────────────────────────────
+function addRow() {
+  rowCount++;
+  const n  = rowCount;
+  const tr = document.createElement('tr');
+  tr.id    = 'row-' + n;
+  tr.innerHTML = `
+    <td style="text-align:center;color:var(--text3);font-size:12px;padding:4px 6px">${n}</td>
+    <td><input type="text" placeholder="Item description / وصف البند" id="desc-${n}" oninput="recalc()"></td>
+    <td class="r"><input type="number" value="1" min="0" step="1"    id="qty-${n}"  oninput="recalc()" style="width:70px"></td>
+    <td class="r"><input type="number" value="0" min="0" step="0.01" id="up-${n}"   oninput="recalc()" style="width:90px"></td>
+    <td class="r discount-col"><input type="number" value="0" min="0" max="100"   id="disc-${n}" oninput="recalc()" style="width:60px"></td>
+    <td class="num money-cell" id="lt-${n}">
+      <span class="money-symbol">${currencyMark(document.getElementById('currency')?.value || 'USD')}</span>
+      <span class="money-value">0.00</span>
+    </td>
+    <td><button class="del-row" onclick="delRow(${n})" title="Remove">×</button></td>`;
+  document.getElementById('items-body').appendChild(tr);
+  recalc();
+}
+
+function delRow(n) {
+  const el = document.getElementById('row-' + n);
+  if (el) el.remove();
+  recalc();
+}
+
+// ── Calculations ───────────────────────────────────────────────────────────
+const ONES_EN = ['','one','two','three','four','five','six','seven','eight','nine','ten',
+  'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+const TENS_EN = ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+const ONES_AR = ['','واحد','اثنان','ثلاثة','أربعة','خمسة','ستة','سبعة','ثمانية','تسعة','عشرة',
+  'أحد عشر','اثنا عشر','ثلاثة عشر','أربعة عشر','خمسة عشر','ستة عشر','سبعة عشر','ثمانية عشر','تسعة عشر'];
+const TENS_AR = ['','','عشرون','ثلاثون','أربعون','خمسون','ستون','سبعون','ثمانون','تسعون'];
+
+function n2wEn(n) {
+  n = Math.round(n);
+  if (n===0) return 'zero';
+  if (n<20)  return ONES_EN[n];
+  if (n<100) return TENS_EN[Math.floor(n/10)] + (n%10 ? ' '+ONES_EN[n%10] : '');
+  if (n<1000) return ONES_EN[Math.floor(n/100)] + ' hundred' + (n%100 ? ' '+n2wEn(n%100) : '');
+  if (n<1e6)  return n2wEn(Math.floor(n/1000)) + ' thousand' + (n%1000 ? ' '+n2wEn(n%1000) : '');
+  return n2wEn(Math.floor(n/1e6)) + ' million' + (n%1e6 ? ' '+n2wEn(n%1e6) : '');
+}
+function n2wAr(n) {
+  n = Math.round(n);
+  if (n===0) return 'صفر';
+  if (n<20)  return ONES_AR[n];
+  if (n<100) return TENS_AR[Math.floor(n/10)] + (n%10 ? ' و'+ONES_AR[n%10] : '');
+  if (n<1000) return ONES_AR[Math.floor(n/100)] + ' مئة' + (n%100 ? ' و'+n2wAr(n%100) : '');
+  if (n<1e6)  return n2wAr(Math.floor(n/1000)) + ' ألف' + (n%1000 ? ' و'+n2wAr(n%1000) : '');
+  return n2wAr(Math.floor(n/1e6)) + ' مليون' + (n%1e6 ? ' و'+n2wAr(n%1e6) : '');
+}
+
+const CUR_EN = { USD:{m:'US Dollars',f:'Cents'}, LBP:{m:'Lebanese Pounds',f:'Piastres'} };
+const CUR_AR = { USD:{m:'دولار أمريكي',f:'سنت'}, LBP:{m:'ليرة لبنانية',f:'قرش'} };
+
+function amountWords(amount, cur) {
+  const intP = Math.floor(amount), decP = Math.round((amount-intP)*100);
+  const en = CUR_EN[cur]||{m:cur,f:'Cents'}, ar = CUR_AR[cur]||{m:cur,f:'سنت'};
+  let enW = n2wEn(intP)+' '+en.m+(decP>0?' and '+n2wEn(decP)+' '+en.f:'');
+  enW = enW.charAt(0).toUpperCase()+enW.slice(1)+' Only';
+  let arW = n2wAr(intP)+' '+ar.m+(decP>0?' و'+n2wAr(decP)+' '+ar.f:'');
+  arW += ' فقط';
+  return { en: enW, ar: arW };
+}
+
+function fmtNum(n) { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function currencyMark(cur) { return cur === 'USD' ? '$' : 'LBP'; }
+function setMoneyCell(el, cur, amount) {
+  if (!el) return;
+  el.innerHTML = `<span class="money-symbol">${currencyMark(cur)}</span><span class="money-value">${fmtNum(amount)}</span>`;
+}
+
+function recalc() {
+  const cur     = document.getElementById('currency').value;
+  const vatPct  = parseFloat(document.getElementById('vat-pct').value) || 0;
+  const includeDiscount = document.getElementById('chk-discount').checked;
+  const rows    = document.querySelectorAll('#items-body tr');
+
+  let sub = 0, totalDisc = 0;
+  rows.forEach(tr => {
+    const id = tr.id.replace('row-','');
+    const q  = parseFloat(document.getElementById('qty-'+id)?.value)  || 0;
+    const u  = parseFloat(document.getElementById('up-'+id)?.value)   || 0;
+    const d  = includeDiscount ? (parseFloat(document.getElementById('disc-'+id)?.value) || 0) : 0;
+    const gross = q * u;
+    const disc  = gross * (d/100);
+    const net   = gross - disc;
+    sub       += gross;
+    totalDisc += disc;
+    setMoneyCell(document.getElementById('lt-'+id), cur, net);
+  });
+
+  const netSub = sub - totalDisc;
+  const vatAmt = netSub * (vatPct/100);
+  const grand  = netSub + vatAmt;
+
+  document.getElementById('t-sub').textContent   = cur + ' ' + fmtNum(sub);
+
+  const discRow = document.getElementById('disc-row');
+  if (includeDiscount && totalDisc > 0) {
+    discRow.style.display = 'flex';
+    document.getElementById('t-disc').textContent = '- ' + cur + ' ' + fmtNum(totalDisc);
+  } else { discRow.style.display = 'none'; }
+
+  const vatRow = document.getElementById('vat-row');
+  if (vatPct > 0) {
+    vatRow.style.display = 'flex';
+    document.getElementById('t-vat-lbl').textContent = `VAT (${vatPct}%) / ضريبة`;
+    document.getElementById('t-vat').textContent     = cur + ' ' + fmtNum(vatAmt);
+  } else { vatRow.style.display = 'none'; }
+
+  document.getElementById('t-grand').textContent = cur + ' ' + fmtNum(grand);
+
+  const w = amountWords(grand, cur);
+  document.getElementById('w-en').textContent = w.en;
+  document.getElementById('w-ar').textContent = w.ar;
+  updateActionSummary();
+}
+
+// ── Collect form data ──────────────────────────────────────────────────────
+function collectData() {
+  const rows  = document.querySelectorAll('#items-body tr');
+  const items = [];
+  const includeDiscount = document.getElementById('chk-discount').checked;
+  rows.forEach(tr => {
+    const id   = tr.id.replace('row-','');
+    const desc = document.getElementById('desc-'+id)?.value.trim();
+    const qty  = parseFloat(document.getElementById('qty-'+id)?.value)  || 0;
+    const up   = parseFloat(document.getElementById('up-'+id)?.value)   || 0;
+    const disc = includeDiscount ? (parseFloat(document.getElementById('disc-'+id)?.value) || 0) : 0;
+    if (desc || qty || up) items.push({ description: desc||'', qty, unit_price: up, discount_pct: disc });
+  });
+
+  const hasDue = document.getElementById('chk-due').checked;
+
+  return {
+    invoice_number: document.getElementById('inv-num').value.trim() || 'INV-001',
+    date:           document.getElementById('inv-date').value,
+    due_date:       hasDue ? document.getElementById('inv-due').value : null,
+    currency:       document.getElementById('currency').value,
+    vat_pct:        parseFloat(document.getElementById('vat-pct').value) || 0,
+    include_discount: includeDiscount,
+    template:       document.getElementById('invoice-template').value,
+    language:       document.getElementById('doc-lang').value,
+    seller: {
+      name:    document.getElementById('s-name').value.trim(),
+      address: document.getElementById('s-addr').value.trim(),
+      phone:   document.getElementById('s-phone').value.trim(),
+      email:   document.getElementById('s-email').value.trim(),
+    },
+    buyer: {
+      name:    document.getElementById('b-name').value.trim(),
+      address: document.getElementById('b-addr').value.trim(),
+      phone:   document.getElementById('b-phone').value.trim(),
+      email:   document.getElementById('b-email').value.trim(),
+    },
+    items,
+    notes: document.getElementById('notes').value.trim(),
+    individual_disclaimer: document.getElementById('chk-individual-disclaimer').checked,
+  };
+}
+
+// ── Generate invoice ───────────────────────────────────────────────────────
+function pdfDownloadUrl(filename) {
+  return `/api/download/${encodeURIComponent(filename)}`;
+}
+
+function setLastGeneratedPdf(filename) {
+  lastGeneratedPdf = filename ? {
+    filename,
+    url: pdfDownloadUrl(filename),
+    invoiceNumber: document.getElementById('inv-num').value.trim() || 'INV-001',
+  } : null;
+
+  const status = document.getElementById('mobile-pdf-status');
+  const shareBtn = document.getElementById('mobile-share-btn');
+  const openBtn = document.getElementById('mobile-open-btn');
+  if (status) status.textContent = filename ? filename : 'No PDF generated yet';
+  if (shareBtn) shareBtn.disabled = !filename;
+  if (openBtn) openBtn.disabled = !filename;
+}
+
+function validateInvoiceData(data) {
+  if (!data.buyer.name) {
+    toast('Please enter a client name', 'error');
+    return false;
+  }
+  if (!data.items.length) {
+    toast('Add at least one item', 'error');
+    return false;
+  }
+  return true;
+}
+
+async function generatePdfFile(options = {}) {
+  const data = collectData();
+  if (!validateInvoiceData(data)) return null;
+
+  const btn = options.button || null;
+  const previousLabel = btn ? btn.textContent : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+  }
+
+  try {
+    const r = await API('POST', '/api/generate-pdf', data);
+    if (!r.ok) {
+      toast('Error: ' + (r.error || 'PDF generation failed'), 'error');
+      return null;
+    }
+
+    setLastGeneratedPdf(r.filename);
+    if (options.download) {
+      const a = document.createElement('a');
+      a.href = pdfDownloadUrl(r.filename);
+      a.download = r.filename;
+      a.click();
+    }
+    if (options.open) {
+      window.open(pdfDownloadUrl(r.filename), '_blank');
+    }
+    setInvoiceNumber(r.next_invoice_number || document.getElementById('inv-num').value);
+    toast(`${r.filename} ready`, 'success');
+    return r.filename;
+  } catch (err) {
+    const timedOut = err && err.name === 'AbortError';
+    toast(timedOut ? 'PDF generation timed out. Please try again.' : 'Server not running. Start server.py first!', 'error');
+    return null;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = previousLabel;
+    }
+  }
+}
+
+async function generateMobilePdf() {
+  await generatePdfFile({ button: document.getElementById('mobile-pdf-btn') });
+}
+
+function openLastPdf() {
+  if (!lastGeneratedPdf) {
+    toast('Generate a PDF first', 'error');
+    return;
+  }
+  window.open(lastGeneratedPdf.url, '_blank');
+}
+
+function isMobileDevice() {
+  return window.matchMedia('(max-width: 780px), (pointer: coarse)').matches;
+}
+
+async function shareGeneratedPdf() {
+  if (!lastGeneratedPdf) return false;
+  const absoluteUrl = new URL(lastGeneratedPdf.url, window.location.href).href;
+  const title = `Invoice ${lastGeneratedPdf.invoiceNumber}`;
+  const text = `${title} PDF`;
+
+  try {
+    if (navigator.share) {
+      const response = await fetch(lastGeneratedPdf.url);
+      const blob = await response.blob();
+      const file = new File([blob], lastGeneratedPdf.filename, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ title, text, files: [file] });
+        return true;
+      }
+      await navigator.share({ title, text, url: absoluteUrl });
+      return true;
+    }
+  } catch (err) {
+    // Fall through to WhatsApp/text URL fallback.
+  }
+
+  const whatsappText = encodeURIComponent(`${text}: ${absoluteUrl}`);
+  window.open(`https://wa.me/?text=${whatsappText}`, '_blank');
+  return true;
+}
+
+async function shareMobilePdf() {
+  if (!lastGeneratedPdf) {
+    const made = await generatePdfFile({ button: document.getElementById('mobile-share-btn') });
+    if (!made) return;
+  }
+  await shareGeneratedPdf();
+}
+
+async function generateInvoice() {
+  const btn  = document.getElementById('gen-btn');
+  const data = collectData();
+
+  if (!data.buyer.name) { toast('Please enter a client name', 'error'); return; }
+  if (!data.items.length) { toast('Add at least one item', 'error'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+
+  try {
+    const isMeridianV2 = data.template === 'meridian_v2';
+    const r = await API('POST', isMeridianV2 ? '/api/generate-pdf' : '/api/generate', data);
+    if (r.ok) {
+      if (isMeridianV2) setLastGeneratedPdf(r.filename);
+      // Trigger download
+      const a = document.createElement('a');
+      a.href = `/api/download/${r.filename}`;
+      a.download = r.filename;
+      a.click();
+      toast(`${r.filename} downloaded`, 'success');
+
+      setInvoiceNumber(r.next_invoice_number || document.getElementById('inv-num').value);
+    } else {
+      toast('Error: ' + (r.error || 'Generation failed'), 'error');
+    }
+  } catch (err) {
+    const timedOut = err && err.name === 'AbortError';
+    toast(timedOut ? 'Invoice generation timed out. Please try again.' : 'Server not running. Start server.py first!', 'error');
+  } finally {
+    btn.disabled = false;
+    updateActionSummary();
+  }
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+async function printPdfInvoice() {
+  const data = collectData();
+
+  if (!data.buyer.name) { toast('Please enter a client name', 'error'); return; }
+  if (!data.items.length) { toast('Add at least one item', 'error'); return; }
+
+  try {
+    if (isMobileDevice()) {
+      const filename = await generatePdfFile();
+      if (filename) await shareGeneratedPdf();
+      return;
+    }
+    if (data.template === 'meridian_v2') {
+      const r = await API('POST', '/api/generate-pdf', data);
+      if (!r.ok) {
+        toast('Error: ' + (r.error || 'PDF generation failed'), 'error');
+        return;
+      }
+      setLastGeneratedPdf(r.filename);
+      window.open(`/api/download/${r.filename}`, '_blank');
+      setInvoiceNumber(r.next_invoice_number || document.getElementById('inv-num').value);
+      return;
+    }
+    const r = await API('POST', '/api/print-preview', data);
+    if (r.ok && r.url) {
+      window.open(r.url, '_blank');
+      setInvoiceNumber(r.next_invoice_number || document.getElementById('inv-num').value);
+    } else {
+      toast('Error: ' + (r.error || 'Print preview failed'), 'error');
+    }
+  } catch (err) {
+    const timedOut = err && err.name === 'AbortError';
+    toast(timedOut ? 'Print preview timed out. Please try again.' : 'Server not running. Start server.py first!', 'error');
+  }
+}
+
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + type;
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+// ── Currency change ────────────────────────────────────────────────────────
+document.getElementById('currency').addEventListener('change', recalc);
+document.getElementById('vat-pct').addEventListener('input', recalc);
+
+// Init recalc
+recalc();
+</script>
+</body>
+</html>

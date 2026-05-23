@@ -1,0 +1,13 @@
+.venv/
+node_modules/
+.npm-cache/
+__pycache__/
+*.pyc
+server-test.*.log
+data/output/
+data/print_jobs/
+data/settings.json
+data/companies.json
+data/customers.json
+data/supabase_config.json
+.vercel/
