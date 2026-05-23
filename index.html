@@ -118,6 +118,16 @@ body.light-theme .mobile-action-bar {
   background: rgba(255,255,255,.96);
   border-top-color: #d7dce5;
 }
+body.auth-locked .container,
+body.auth-locked .mobile-action-bar,
+body.auth-locked .topbar-nav,
+body.auth-locked #inv-counter,
+body.auth-locked .topbar-actions .icon-btn {
+  display: none !important;
+}
+body.auth-locked {
+  padding-bottom: 0;
+}
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; }
@@ -465,6 +475,67 @@ body.show-discount td.discount-col { display: table-cell; }
   gap: 8px;
   justify-content: flex-end;
   margin-top: 16px;
+}
+body.auth-locked #auth-cancel-btn {
+  display: none;
+}
+.pdf-preview-dialog {
+  width: min(960px, calc(100vw - 24px));
+  height: min(92vh, 860px);
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.48);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+.pdf-preview-head,
+.pdf-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.pdf-preview-actions {
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  justify-content: flex-end;
+}
+.pdf-preview-title {
+  min-width: 0;
+}
+.pdf-preview-title strong,
+.pdf-preview-title span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pdf-preview-title strong {
+  color: var(--text);
+  font-size: 14px;
+}
+.pdf-preview-title span {
+  color: var(--text2);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.pdf-preview-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #eef1f5;
+}
+.mobile-design-field {
+  display: none;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
 }
 .settings-panel {
   width: min(920px, 100%); max-height: calc(100vh - 96px); overflow: hidden;
@@ -1036,6 +1107,9 @@ body.show-discount td.discount-col { display: table-cell; }
   .action-bar {
     display: none;
   }
+  .mobile-design-field {
+    display: block;
+  }
   .items-table,
   .items-table tbody,
   .items-table tr,
@@ -1167,10 +1241,21 @@ body.show-discount td.discount-col { display: table-cell; }
   .settings-side { min-height: 180px; max-height: 240px; border-right: 0; border-bottom: 1px solid var(--border); }
   .settings-form-grid { grid-template-columns: 1fr; }
   .modal-backdrop { padding: 54px 8px 12px; }
+  .pdf-preview-dialog {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 66px);
+  }
+  .pdf-preview-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .pdf-preview-actions button {
+    width: 100%;
+  }
 }
 </style>
 </head>
-<body>
+<body class="auth-locked">
 
 <!-- Top bar -->
 <div class="topbar">
@@ -1200,19 +1285,19 @@ body.show-discount td.discount-col { display: table-cell; }
 <div class="modal-backdrop" id="auth-modal" onclick="closeAuthOnBackdrop(event)" aria-hidden="true">
   <div class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <h2 id="auth-title">Sign in</h2>
-    <p id="auth-copy">Use your Supabase user. Short names are mapped automatically, so amer becomes amer@invoice.local.</p>
+    <p id="auth-copy">Sign in to access your invoices. Use your assigned username and password.</p>
     <div class="auth-grid">
       <div class="field">
-        <div class="bilabel"><span>User</span><span class="ar">User</span></div>
+        <div class="bilabel"><span>Username</span><span class="ar">اسم المستخدم</span></div>
         <input id="auth-username" autocomplete="username" placeholder="amer or amro">
       </div>
       <div class="field">
-        <div class="bilabel"><span>Password</span><span class="ar">Password</span></div>
+        <div class="bilabel"><span>Password</span><span class="ar">كلمة المرور</span></div>
         <input id="auth-password" type="password" autocomplete="current-password" placeholder="12345678">
       </div>
     </div>
     <div class="auth-actions">
-      <button class="secondary-btn" type="button" onclick="closeAuthModal()">Cancel</button>
+      <button class="secondary-btn" id="auth-cancel-btn" type="button" onclick="closeAuthModal()">Cancel</button>
       <button class="primary-btn" id="auth-login-btn" type="button" onclick="signInSupabase()">Sign in</button>
     </div>
   </div>
@@ -1393,6 +1478,16 @@ body.show-discount td.discount-col { display: table-cell; }
   <!-- ── NOTES ─────────────────────────────────────────────────────── -->
   <div class="card">
     <div class="card-title">NOTES / ملاحظات</div>
+    <div class="mobile-design-field">
+      <div class="bilabel"><span>Invoice design</span><span class="ar">تصميم الفاتورة</span></div>
+      <select id="mobile-template" onchange="setTemplateFromMobileNotes()">
+        <option value="aurora">Aurora</option>
+        <option value="meridian">Meridian</option>
+        <option value="meridian_v2">Meridian v2</option>
+        <option value="obsidian">Obsidian</option>
+        <option value="classic">Classic</option>
+      </select>
+    </div>
     <div class="field">
       <div class="bilabel"><span>Additional notes</span><span class="ar">ملاحظات إضافية</span></div>
       <textarea id="notes" placeholder="Payment terms, bank details…"></textarea>
@@ -1440,7 +1535,7 @@ body.show-discount td.discount-col { display: table-cell; }
     <div class="side-title">Invoice status</div>
     <div class="side-kv">
       <span><em>State</em><strong>Draft</strong></span>
-      <span><em>Output</em><strong>DOCX + PDF</strong></span>
+      <span><em>Output</em><strong>PDF</strong></span>
     </div>
   </div>
   <div class="side-section">
@@ -1458,6 +1553,27 @@ body.show-discount td.discount-col { display: table-cell; }
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
+
+<div class="modal-backdrop" id="pdf-preview-modal" onclick="closePdfPreviewOnBackdrop(event)" aria-hidden="true">
+  <div class="pdf-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="pdf-preview-title">
+    <div class="pdf-preview-head">
+      <div class="pdf-preview-title">
+        <strong id="pdf-preview-title">PDF preview</strong>
+        <span id="pdf-preview-filename">No PDF generated yet</span>
+      </div>
+      <button class="icon-btn" type="button" onclick="closePdfPreview()" title="Close preview" aria-label="Close preview">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <iframe class="pdf-preview-frame" id="pdf-preview-frame" title="PDF preview"></iframe>
+    <div class="pdf-preview-actions">
+      <button class="secondary-btn" type="button" onclick="openLastPdf()">Open</button>
+      <button class="primary-btn" type="button" onclick="shareMobilePdf()">Share</button>
+    </div>
+  </div>
+</div>
 
 <div class="mobile-action-bar" aria-label="Mobile invoice actions">
   <div class="mobile-bar-meta">
@@ -1617,6 +1733,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('inv-due').value  = new Date(Date.now() + 7*864e5).toISOString().split('T')[0];
   loadDocumentSettings();
   await initSupabaseAuth();
+  if (!supabaseActive()) {
+    toggleDiscount();
+    addRow();
+    return;
+  }
   await loadInvoiceNumber();
 
   await loadCompanies();
@@ -1674,6 +1795,7 @@ function loadDocumentSettings() {
   if (document.getElementById('settings-doc-lang')) document.getElementById('settings-doc-lang').value = lang;
   if (document.getElementById('settings-template')) document.getElementById('settings-template').value = template;
   if (document.getElementById('side-template')) document.getElementById('side-template').value = template;
+  if (document.getElementById('mobile-template')) document.getElementById('mobile-template').value = template;
   if (document.getElementById('settings-vat-pct')) document.getElementById('settings-vat-pct').value = vatPct;
   recalc();
   updateActionSummary();
@@ -1744,6 +1866,7 @@ async function saveDocumentSettings() {
   document.getElementById('invoice-template').value = template;
   document.getElementById('vat-pct').value = vatPct;
   if (document.getElementById('side-template')) document.getElementById('side-template').value = template;
+  if (document.getElementById('mobile-template')) document.getElementById('mobile-template').value = template;
   recalc();
   await saveRemoteDocumentSettings();
   toast('Document settings saved', 'success');
@@ -1753,6 +1876,18 @@ async function setTemplateFromSidePanel() {
   const template = normalizeTemplate(document.getElementById('side-template').value);
   document.getElementById('invoice-template').value = template;
   if (document.getElementById('settings-template')) document.getElementById('settings-template').value = template;
+  if (document.getElementById('mobile-template')) document.getElementById('mobile-template').value = template;
+  localStorage.setItem('inv_template', template);
+  await saveRemoteDocumentSettings();
+  updateActionSummary();
+  toast('Design updated', 'success');
+}
+
+async function setTemplateFromMobileNotes() {
+  const template = normalizeTemplate(document.getElementById('mobile-template').value);
+  document.getElementById('invoice-template').value = template;
+  if (document.getElementById('settings-template')) document.getElementById('settings-template').value = template;
+  if (document.getElementById('side-template')) document.getElementById('side-template').value = template;
   localStorage.setItem('inv_template', template);
   await saveRemoteDocumentSettings();
   updateActionSummary();
@@ -1776,6 +1911,7 @@ function updateActionSummary() {
   const mobileTotal = document.getElementById('mobile-total');
   if (actionTemplate && templateEl) actionTemplate.textContent = templateLabel(templateEl.value);
   if (document.getElementById('side-template') && templateEl) document.getElementById('side-template').value = templateEl.value;
+  if (document.getElementById('mobile-template') && templateEl) document.getElementById('mobile-template').value = templateEl.value;
   if (actionTotal && totalEl) actionTotal.textContent = totalEl.textContent;
   if (mobileTotal && totalEl) mobileTotal.textContent = totalEl.textContent;
   const genBtn = document.getElementById('gen-btn');
@@ -1991,7 +2127,8 @@ function useSettingsCompanyOnInvoice(showToast = true) {
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     closeSettings();
-    closeAuthModal();
+    if (supabaseActive()) closeAuthModal();
+    closePdfPreview();
   }
 });
 
@@ -2031,12 +2168,17 @@ function updateAuthUi() {
 
   btn.classList.toggle('online', supabaseActive());
   if (supabaseActive()) {
+    document.body.classList.remove('auth-locked');
     btn.textContent = `Signed in: ${authDisplayName()}`;
     signout.style.display = 'inline';
+    closeAuthModal(true);
   } else if (supabaseConfigured) {
+    document.body.classList.add('auth-locked');
     btn.textContent = 'Sign in';
     signout.style.display = 'none';
+    openAuthModal(true);
   } else {
+    document.body.classList.add('auth-locked');
     btn.textContent = 'Local data';
     signout.style.display = 'none';
   }
@@ -2063,9 +2205,18 @@ async function initSupabaseAuth() {
       updateAuthUi();
       if (supabaseUser) {
         await loadRemoteDocumentSettings();
+        if (!rowCount) addRow();
+        await loadInvoiceNumber();
+        await loadCompanies();
+        await loadCustomers();
+      } else {
+        companies = [];
+        customers = [];
+        selCompId = null;
+        selCustId = null;
+        renderDropdown('company');
+        renderDropdown('customer');
       }
-      await loadCompanies();
-      await loadCustomers();
     });
   } catch (err) {
     supabaseConfigured = false;
@@ -2086,14 +2237,15 @@ function openAuthModal() {
   setTimeout(() => document.getElementById('auth-username')?.focus(), 30);
 }
 
-function closeAuthModal() {
+function closeAuthModal(force = false) {
+  if (!force && !supabaseActive()) return;
   const modal = document.getElementById('auth-modal');
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
 }
 
 function closeAuthOnBackdrop(event) {
-  if (event.target.id === 'auth-modal') closeAuthModal();
+  if (event.target.id === 'auth-modal' && supabaseActive()) closeAuthModal();
 }
 
 async function signInSupabase() {
@@ -2112,8 +2264,10 @@ async function signInSupabase() {
     if (error) throw error;
     supabaseUser = data.user;
     updateAuthUi();
-    closeAuthModal();
+    closeAuthModal(true);
     await loadRemoteDocumentSettings();
+    if (!rowCount) addRow();
+    await loadInvoiceNumber();
     await loadCompanies();
     await loadCustomers();
     toast('Signed in', 'success');
@@ -2134,8 +2288,9 @@ async function signOutSupabase() {
   selCustId = null;
   updateAuthUi();
   loadDocumentSettings();
-  await loadCompanies();
-  await loadCustomers();
+  renderDropdown('company');
+  renderDropdown('customer');
+  renderSettingsCompanyList();
   toast('Signed out', 'success');
 }
 
@@ -2825,7 +2980,7 @@ async function requestPdfGeneration(data) {
 
 async function generateMobilePdf() {
   const filename = await generatePdfFile({ button: document.getElementById('mobile-pdf-btn') });
-  if (filename) await shareGeneratedPdf();
+  if (filename) openPdfPreview();
 }
 
 function openLastPdf() {
@@ -2834,6 +2989,33 @@ function openLastPdf() {
     return;
   }
   window.open(lastGeneratedPdf.url, '_blank');
+}
+
+function openPdfPreview() {
+  if (!lastGeneratedPdf) {
+    toast('Generate a PDF first', 'error');
+    return;
+  }
+  const modal = document.getElementById('pdf-preview-modal');
+  const frame = document.getElementById('pdf-preview-frame');
+  const filename = document.getElementById('pdf-preview-filename');
+  if (frame) frame.src = lastGeneratedPdf.url;
+  if (filename) filename.textContent = lastGeneratedPdf.filename;
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closePdfPreview() {
+  const modal = document.getElementById('pdf-preview-modal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  const frame = document.getElementById('pdf-preview-frame');
+  if (frame) frame.removeAttribute('src');
+}
+
+function closePdfPreviewOnBackdrop(event) {
+  if (event.target.id === 'pdf-preview-modal') closePdfPreview();
 }
 
 function isMobileDevice() {
@@ -2891,7 +3073,7 @@ async function printPdfInvoice() {
   try {
     if (isMobileDevice()) {
       const filename = await generatePdfFile();
-      if (filename) await shareGeneratedPdf();
+      if (filename) openPdfPreview();
       return;
     }
     await generatePdfFile({ open: true });
