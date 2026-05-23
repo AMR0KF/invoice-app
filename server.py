@@ -458,31 +458,7 @@ def delete_customer(cid):
 # ── Generate Invoice ──────────────────────────────────────────────────────────
 @app.route("/api/generate", methods=["POST"])
 def generate():
-    data = request.json
-    try:
-        settings = get_settings()
-        invoice_number = settings.get("next_invoice_number") or data.get("invoice_number") or "INV-001"
-        data["invoice_number"] = invoice_number
-        result = subprocess.run(
-            ["node", str(BASE / "generate.js")],
-            input=json.dumps(data, ensure_ascii=False),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-            cwd=str(BASE),
-        )
-        if result.returncode != 0:
-            return jsonify({"error": result.stderr or "Generation failed"}), 500
-        filename = Path(result.stdout.strip()).name
-        settings["next_invoice_number"] = next_invoice_number(invoice_number)
-        save_settings(settings)
-        return jsonify({"ok": True, "filename": filename, "invoice_number": invoice_number, "next_invoice_number": settings["next_invoice_number"]})
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": "Invoice generation timed out. Please try again."}), 504
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return generate_pdf()
 
 # ── Download ──────────────────────────────────────────────────────────────────
 @app.route("/api/generate-pdf", methods=["POST"])
