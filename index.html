@@ -1667,6 +1667,7 @@ body.auth-locked #auth-cancel-btn {
       <div class="bilabel"><span>Invoice design</span><span class="ar">تصميم الفاتورة</span></div>
       <select id="mobile-template" onchange="setTemplateFromMobileNotes()">
         <option value="aurora">Aurora</option>
+        <option value="aurora_v2">Aurora v2</option>
         <option value="meridian">Meridian</option>
         <option value="meridian_v2">Meridian v2</option>
         <option value="obsidian">Obsidian</option>
@@ -1709,6 +1710,7 @@ body.auth-locked #auth-cancel-btn {
       <div class="bilabel"><span>Template</span><span class="ar">التصميم</span></div>
       <select id="side-template" onchange="setTemplateFromSidePanel()">
         <option value="aurora">Aurora</option>
+        <option value="aurora_v2">Aurora v2</option>
         <option value="meridian">Meridian</option>
         <option value="meridian_v2">Meridian v2</option>
         <option value="obsidian">Obsidian</option>
@@ -1838,6 +1840,7 @@ body.auth-locked #auth-cancel-btn {
               <div class="bilabel"><span>Invoice design</span><span class="ar">تصميم الفاتورة</span></div>
               <select id="settings-template" onchange="saveDocumentSettings()">
                 <option value="aurora">Aurora</option>
+                <option value="aurora_v2">Aurora v2</option>
                 <option value="meridian">Meridian</option>
                 <option value="meridian_v2">Meridian v2</option>
                 <option value="obsidian">Obsidian</option>
@@ -1932,7 +1935,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadCompanies();
   await loadCustomers();
   toggleDiscount();
-  addRow();
+  if (!rowCount) addRow();
 });
 
 // ── Language toggle ────────────────────────────────────────────────────────
@@ -2084,12 +2087,12 @@ async function setTemplateFromMobileNotes() {
 }
 
 function normalizeTemplate(value) {
-  const allowed = ['aurora', 'meridian', 'meridian_v2', 'obsidian', 'classic'];
+  const allowed = ['aurora', 'aurora_v2', 'meridian', 'meridian_v2', 'obsidian', 'classic'];
   return allowed.includes(value) ? value : 'aurora';
 }
 
 function templateLabel(value) {
-  return ({ aurora: 'Aurora', meridian: 'Meridian', meridian_v2: 'Meridian v2', obsidian: 'Obsidian', classic: 'Classic' })[value] || 'Aurora';
+  return ({ aurora: 'Aurora', aurora_v2: 'Aurora v2', meridian: 'Meridian', meridian_v2: 'Meridian v2', obsidian: 'Obsidian', classic: 'Classic' })[value] || 'Aurora';
 }
 
 function updateActionSummary() {
@@ -3212,7 +3215,12 @@ async function renderPdfPreview() {
     const pdfjs = await loadPdfRenderer();
     const blob = await lastPdfBlob();
     const buffer = await blob.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: buffer }).promise;
+    const pdf = await pdfjs.getDocument({
+      data: buffer,
+      cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/standard_fonts/',
+    }).promise;
     const page = await pdf.getPage(1);
     const baseViewport = page.getViewport({ scale: 1 });
     const maxWidth = Math.max(260, body.clientWidth - 28);

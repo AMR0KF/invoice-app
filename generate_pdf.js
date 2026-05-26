@@ -116,9 +116,14 @@ function companyHeader(seller) {
 }
 
 function normalizeTemplate(value) {
-  const allowed = ["aurora", "meridian", "meridian_v2", "obsidian", "classic"];
+  const allowed = ["aurora", "aurora_v2", "meridian", "meridian_v2", "obsidian", "classic"];
   return allowed.includes(value) ? value : "aurora";
 }
+
+const FONT_LINKS = `
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&family=Amiri:ital,wght@0,400;0,700;1,400&family=Noto+Naskh+Arabic:wght@400;500;700&display=swap" rel="stylesheet">`;
 
 function moneyCompact(n) {
   return fmt(n).replace(/\.00$/, "");
@@ -202,6 +207,7 @@ function renderLegacyTemplate(data, template) {
 <head>
 <meta charset="utf-8">
 <title>Invoice ${invoiceNo}</title>
+${FONT_LINKS}
 <style>
 @page { size: A4; margin: 0; }
 * { box-sizing: border-box; }
@@ -216,7 +222,7 @@ body {
   margin: 0;
   background: #eef0f4;
   color: var(--ink);
-  font-family: Arial, sans-serif;
+  font-family: "Inter", "Segoe UI", Arial, "Noto Naskh Arabic", "Amiri", "Arabic Typesetting", "Traditional Arabic", Tahoma, sans-serif;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
@@ -252,7 +258,7 @@ body.aurora {
   --soft: #f8f7ff;
 }
 [dir="auto"], [dir="rtl"], .arabic { unicode-bidi: plaintext; }
-[dir="rtl"], .arabic { direction: rtl; font-family: "Arabic Typesetting", "Traditional Arabic", Tahoma, Arial, sans-serif; }
+[dir="rtl"], .arabic { direction: rtl; font-family: "Noto Naskh Arabic", "Arabic Typesetting", "Traditional Arabic", Tahoma, Arial, sans-serif; }
 .page { width: 210mm; min-height: 297mm; margin: 0 auto; background: var(--paper); padding: 18mm; position: relative; overflow: hidden; }
 body.aurora .page { padding-top: 0; }
 body.aurora .hero { position: relative; z-index: 1; height: 38mm; margin: 0 -18mm 8mm; padding: 9mm 18mm 0; background: linear-gradient(105deg, #e2e8ff 0%, #eee9ff 50%, #fde8f6 100%); display: flex; justify-content: space-between; align-items: flex-start; }
@@ -277,7 +283,7 @@ body.meridian .page { border-left: 2mm solid var(--brand); padding: 18mm 18mm 16
 body.obsidian .page { border-left: 18mm solid #111827; }
 .brand { display: flex; gap: 4mm; align-items: center; min-height: 12mm; }
 .company-title { margin: 0; font-size: 14pt; }
-.arabic-title { font-family: "Arabic Typesetting", "Traditional Arabic", Tahoma, Arial, sans-serif; font-size: 28pt; line-height: 1; font-weight: 700; }
+.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", serif; font-size: 28pt; line-height: 1; font-weight: 700; }
 .brand p, .invoice-id p { margin: 1mm 0 0; color: var(--muted); font-size: 8pt; }
 .invoice-id { text-align: right; }
 .invoice-id h2 { margin: 0; color: var(--brand-strong); font-size: 22pt; }
@@ -326,10 +332,10 @@ body.meridian td { border-bottom-color: #eee4d2; }
 .bottom { display: grid; grid-template-columns: 1fr 52mm; gap: 10mm; margin-top: 10mm; align-items: start; }
 .notes { color: var(--muted); font-size: 8pt; line-height: 1.6; }
 .note-line { display: block; text-align: left; }
-.ar-note { direction: rtl; text-align: left; font-family: Arial, "Traditional Arabic", sans-serif; }
+.ar-note { direction: rtl; text-align: left; font-family: "Noto Naskh Arabic", "Traditional Arabic", Arial, sans-serif; }
 .thanks-footer { margin-top: 14mm; text-align: center; color: var(--brand); font-weight: 700; }
 .thanks-footer .thanks-en { margin: 0 0 1.5mm; font-size: 11pt; }
-.thanks-footer .thanks-ar { margin: 0; direction: rtl; font-family: Arial, "Traditional Arabic", sans-serif; font-size: 10pt; line-height: 1.35; font-weight: 400; }
+.thanks-footer .thanks-ar { margin: 0; direction: rtl; font-family: "Noto Naskh Arabic", "Traditional Arabic", Arial, sans-serif; font-size: 10pt; line-height: 1.35; font-weight: 400; }
 .totals div { display: flex; justify-content: space-between; font-size: 8.5pt; padding: 2mm 0; }
 .grand { margin-top: 2mm; padding: 4mm !important; border-radius: 2mm; background: var(--brand); color: white; align-items: center; }
 body.meridian .grand { background: transparent; color: var(--ink); border-top: 1px solid var(--line); border-radius: 0; padding-left: 0 !important; padding-right: 0 !important; }
@@ -360,6 +366,288 @@ footer { position: absolute; left: 18mm; right: 18mm; bottom: 8mm; color: #c7cbd
     ${thankAr ? `<p class="thanks-ar">${esc(thankAr)}</p>` : ""}
   </section>
   <footer><span>Page 1 / 1</span></footer>
+</main>
+</body>
+</html>`;
+}
+
+function renderAuroraV2(data) {
+  const lang = ["en", "ar", "bi"].includes(data.language) ? data.language : "bi";
+  const cur = data.currency === "LBP" ? "LBP" : "USD";
+  const curSymbol = cur === "USD" ? "$" : cur;
+  const seller = data.seller || {};
+  const buyer = data.buyer || {};
+  const totals = calcTotals(data.items || [], data.vat_pct || 0, data.include_discount !== false);
+  const invoiceNo = esc(data.invoice_number || "INV-001");
+  const date = esc(data.date || "");
+  const due = data.due_date || "";
+  const showDiscount = totals.totalDisc > 0;
+  const vatPct = Number(data.vat_pct) || 0;
+
+  const sellerName = seller.name || "Company";
+  const sellerNameClass = hasArabic(sellerName) ? "brand-name arabic-title" : "brand-name";
+  const sellerNameDir = hasArabic(sellerName) ? "rtl" : "auto";
+
+  const invoiceTitle = biLabel(lang, "Invoice", "فاتورة");
+  const fromLabel = biLabel(lang, "From", "من");
+  const billToLabel = biLabel(lang, "Bill to", "إلى");
+  const issuedLabel = biLabel(lang, "Issued", "تاريخ الإصدار");
+  const dueLabel = biLabel(lang, "Due", "تاريخ الاستحقاق");
+  const subtotalLabel = biLabel(lang, "Subtotal", "المجموع الفرعي");
+  const discountLabel = biLabel(lang, "Discount", "الخصم");
+  const totalLabel = biLabel(lang, "Total due", "الإجمالي");
+  const notesTitle = biLabel(lang, "Notes", "ملاحظات");
+  const thDesc = biLabel(lang, "Description", "الوصف");
+  const thQty = biLabel(lang, "Qty", "الكمية");
+  const thUnit = biLabel(lang, "Unit price", "سعر الوحدة");
+  const thAmount = biLabel(lang, "Amount", "المجموع");
+  const thankEn = lang === "en" || lang === "bi" ? "Thank you for your business." : "";
+  const thankAr = lang === "ar" || lang === "bi" ? "شكراً لتعاملكم معنا" : "";
+
+  const partyHtml = (label, party) => {
+    const lines = ["address", "phone", "email"]
+      .filter((k) => party[k])
+      .map((k) => `<div class="party-line" dir="auto">${esc(party[k])}</div>`)
+      .join("");
+    const nameClass = hasArabic(party.name || "") ? "party-name arabic-title" : "party-name";
+    return `<div class="party"><div class="party-label">${esc(label)}</div><div class="${nameClass}" dir="auto">${esc(party.name || "—")}</div>${lines}</div>`;
+  };
+
+  const rows = totals.rows.map((item, idx) => `
+    <tr>
+      <td class="row-idx">${String(idx + 1).padStart(2, "0")}</td>
+      <td class="row-desc" dir="auto">${esc(item.description || "")}</td>
+      <td class="row-num">${esc(moneyCompact(item.qty))}</td>
+      <td class="row-num">${esc(curSymbol)} ${fmt(item.unit_price)}</td>
+      ${showDiscount ? `<td class="row-num">${esc(moneyCompact(item.discount_pct))}%</td>` : ""}
+      <td class="row-num row-amount">${esc(curSymbol)} ${fmt(item.net)}</td>
+    </tr>`).join("");
+
+  const notesHtml = invoiceNotes(data, lang).split(/\r?\n/).map((line) => {
+    const ar = hasArabic(line);
+    return `<div class="${ar ? "note ar-note" : "note"}" dir="${ar ? "rtl" : "auto"}">${esc(line)}</div>`;
+  }).join("");
+
+  const discountTotal = showDiscount
+    ? `<div class="total-row"><span>${esc(discountLabel)}</span><strong>− ${esc(curSymbol)} ${fmt(totals.totalDisc)}</strong></div>`
+    : "";
+  const vatTotal = vatPct > 0
+    ? `<div class="total-row"><span>VAT ${moneyCompact(vatPct)}%</span><strong>${esc(curSymbol)} ${fmt(totals.vatAmt)}</strong></div>`
+    : "";
+  const dueLine = due ? `<div class="meta-row"><span>${esc(dueLabel)}</span><strong>${esc(due)}</strong></div>` : "";
+
+  return `<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>Invoice ${invoiceNo}</title>
+${FONT_LINKS}
+<style>
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; }
+:root {
+  --ink: #0b1020;
+  --ink-mid: #344054;
+  --muted: #667085;
+  --line: #e6e8f0;
+  --row-alt: #fafbff;
+  --brand-1: #6366f1;
+  --brand-2: #8b5cf6;
+  --brand-3: #ec4899;
+  --accent-soft: #eef2ff;
+}
+body {
+  margin: 0;
+  background: #f4f5fb;
+  color: var(--ink);
+  font-family: "Inter", "Segoe UI", Arial, "Noto Naskh Arabic", "Amiri", "Arabic Typesetting", "Traditional Arabic", Tahoma, sans-serif;
+  font-size: 9pt;
+  line-height: 1.45;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  unicode-bidi: plaintext;
+}
+[dir="auto"], [dir="rtl"], .ar-note { unicode-bidi: plaintext; }
+[dir="rtl"], .arabic { font-family: "Noto Naskh Arabic", "Arabic Typesetting", "Traditional Arabic", Tahoma, Arial, sans-serif; }
+.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", serif; font-weight: 700; line-height: 1.05; }
+.page {
+  width: 210mm; min-height: 297mm; margin: 0 auto;
+  background: #ffffff; position: relative; overflow: hidden;
+  padding: 24mm 22mm 22mm;
+}
+.accent-band {
+  position: absolute; top: 0; left: 0; right: 0; height: 5mm;
+  background: linear-gradient(95deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 100%);
+}
+.header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12mm; margin-bottom: 12mm;
+}
+.brand {
+  display: flex; flex-direction: column; gap: 1mm;
+  max-width: 90mm;
+}
+.brand-mark {
+  display: inline-flex; align-items: center; gap: 2mm;
+  font-size: 7.5pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--brand-1); margin-bottom: 2mm;
+}
+.brand-mark:before {
+  content: ""; display: inline-block; width: 3mm; height: 3mm; border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand-1), var(--brand-3));
+}
+.brand-name { margin: 0; font-size: 16pt; font-weight: 700; color: var(--ink); line-height: 1.1; }
+.brand-name.arabic-title { font-size: 24pt; }
+.brand-meta { margin: 2mm 0 0; font-size: 8pt; color: var(--muted); line-height: 1.55; }
+.brand-meta div { margin: 0; }
+.brand-logo { display: block; max-height: 14mm; max-width: 40mm; object-fit: contain; margin-bottom: 3mm; }
+.invoice-head { text-align: right; min-width: 70mm; }
+.invoice-eyebrow {
+  font-size: 7.5pt; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 2mm;
+}
+.invoice-no {
+  margin: 0; font-family: "JetBrains Mono", "Inter", monospace;
+  font-size: 22pt; font-weight: 600; letter-spacing: -.01em; color: var(--ink);
+  line-height: 1;
+}
+.meta-row {
+  display: flex; justify-content: space-between; gap: 6mm;
+  font-size: 8pt; padding: 1.5mm 0; border-bottom: 1px solid var(--line);
+}
+.meta-row:last-child { border-bottom: 0; }
+.meta-row span { color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-size: 7pt; font-weight: 600; }
+.meta-row strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.meta-block { margin-top: 5mm; }
+.parties {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10mm;
+  margin-bottom: 11mm;
+}
+.party { padding-top: 4mm; border-top: 2px solid var(--brand-1); }
+.party-label {
+  font-size: 7.2pt; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--brand-1); margin: 0 0 2.5mm;
+}
+.party-name { font-size: 11pt; font-weight: 600; color: var(--ink); margin: 0 0 1.5mm; line-height: 1.25; }
+.party-name.arabic-title { font-size: 17pt; }
+.party-line { font-size: 8pt; color: var(--ink-mid); line-height: 1.55; }
+.items-table { width: 100%; border-collapse: collapse; margin-bottom: 8mm; }
+.items-table th {
+  font-size: 7pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); text-align: right; padding: 3.5mm 2.5mm; border-bottom: 1px solid var(--line);
+}
+.items-table th:nth-child(1), .items-table td.row-idx { text-align: center; width: 9mm; color: var(--muted); }
+.items-table th:nth-child(2), .items-table td.row-desc { text-align: left; }
+.items-table td {
+  font-size: 9pt; padding: 4mm 2.5mm; color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.items-table tbody tr:nth-child(even) { background: var(--row-alt); }
+.row-num { text-align: right; font-variant-numeric: tabular-nums; font-family: "JetBrains Mono", "Inter", monospace; font-size: 8.5pt; }
+.row-amount { font-weight: 600; color: var(--ink); }
+.row-desc { font-size: 9pt; font-weight: 500; }
+.bottom {
+  display: grid; grid-template-columns: 1.2fr 1fr; gap: 12mm; margin-top: 8mm;
+}
+.notes-block .notes-label {
+  font-size: 7.2pt; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 3mm;
+}
+.note { font-size: 8.5pt; color: var(--ink-mid); line-height: 1.6; }
+.ar-note { font-family: "Noto Naskh Arabic", "Traditional Arabic", Arial, sans-serif; }
+.totals { align-self: start; }
+.total-row {
+  display: flex; justify-content: space-between; gap: 6mm;
+  font-size: 9pt; padding: 2.8mm 0; color: var(--ink-mid);
+  border-bottom: 1px solid var(--line);
+}
+.total-row span { color: var(--muted); font-weight: 500; }
+.total-row strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.grand {
+  margin-top: 4mm; padding: 5mm 6mm; border-radius: 4mm;
+  background: linear-gradient(120deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 110%);
+  color: #ffffff;
+  display: flex; justify-content: space-between; align-items: center; gap: 6mm;
+  box-shadow: 0 4mm 12mm rgba(99, 102, 241, .25);
+}
+.grand .grand-label {
+  font-size: 7.5pt; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+  opacity: .9;
+}
+.grand .grand-value {
+  font-family: "JetBrains Mono", "Inter", monospace; font-size: 16pt; font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+}
+.footer {
+  position: absolute; left: 22mm; right: 22mm; bottom: 14mm;
+  text-align: center; color: var(--muted); font-size: 8pt;
+}
+.footer:before {
+  content: ""; display: block; height: 1px; margin-bottom: 5mm;
+  background: linear-gradient(90deg, transparent 0%, var(--brand-1) 35%, var(--brand-3) 65%, transparent 100%);
+  opacity: .35;
+}
+.footer .thanks-en { margin: 0 0 1mm; font-weight: 600; color: var(--ink-mid); letter-spacing: .04em; }
+.footer .thanks-ar { margin: 0; font-family: "Noto Naskh Arabic", "Traditional Arabic", Arial, sans-serif; font-size: 9pt; }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="accent-band"></div>
+  <header class="header">
+    <div class="brand">
+      <div class="brand-mark">${esc(invoiceTitle)}</div>
+      ${logoHtml(seller)}
+      <h1 class="${sellerNameClass}" dir="${sellerNameDir}">${esc(sellerName)}</h1>
+      <div class="brand-meta">
+        ${seller.address ? `<div dir="auto">${esc(seller.address)}</div>` : ""}
+        ${seller.phone ? `<div dir="auto">${esc(seller.phone)}</div>` : ""}
+        ${seller.email ? `<div dir="auto">${esc(seller.email)}</div>` : ""}
+      </div>
+    </div>
+    <div class="invoice-head">
+      <p class="invoice-eyebrow">${esc(invoiceTitle)}</p>
+      <p class="invoice-no">${invoiceNo}</p>
+      <div class="meta-block">
+        <div class="meta-row"><span>${esc(issuedLabel)}</span><strong>${date}</strong></div>
+        ${dueLine}
+        <div class="meta-row"><span>${esc(biLabel(lang, "Currency", "العملة"))}</span><strong>${esc(cur)}</strong></div>
+      </div>
+    </div>
+  </header>
+  <section class="parties">
+    ${partyHtml(fromLabel, seller)}
+    ${partyHtml(billToLabel, buyer)}
+  </section>
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>${esc(thDesc)}</th>
+        <th>${esc(thQty)}</th>
+        <th>${esc(thUnit)}</th>
+        ${showDiscount ? `<th>${esc(biLabel(lang, "Disc.", "خصم"))}</th>` : ""}
+        <th>${esc(thAmount)}</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <section class="bottom">
+    <div class="notes-block">
+      <div class="notes-label">${esc(notesTitle)}</div>
+      ${notesHtml}
+    </div>
+    <div class="totals">
+      <div class="total-row"><span>${esc(subtotalLabel)}</span><strong>${esc(curSymbol)} ${fmt(totals.subtotal)}</strong></div>
+      ${discountTotal}
+      ${vatTotal}
+      <div class="grand"><span class="grand-label">${esc(totalLabel)}</span><span class="grand-value">${esc(curSymbol)} ${fmt(totals.grand)}</span></div>
+    </div>
+  </section>
+  <footer class="footer">
+    ${thankEn ? `<p class="thanks-en">${esc(thankEn)}</p>` : ""}
+    ${thankAr ? `<p class="thanks-ar">${esc(thankAr)}</p>` : ""}
+  </footer>
 </main>
 </body>
 </html>`;
@@ -410,6 +698,7 @@ async function browserLaunchOptions() {
 function renderTemplate(data) {
   const lang = ["en", "ar", "bi"].includes(data.language) ? data.language : "bi";
   const template = normalizeTemplate(data.template);
+  if (template === "aurora_v2") return renderAuroraV2(data);
   if (template !== "meridian_v2") return renderLegacyTemplate(data, template);
   const cur = data.currency === "LBP" ? "LBP" : "USD";
   const seller = data.seller || {};
@@ -504,6 +793,7 @@ async function buildPDFBuffer(data) {
     browser = await puppeteer.launch(await browserLaunchOptions());
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.evaluate(() => document.fonts && document.fonts.ready);
     return await page.pdf({
       format: "A4",
       printBackground: true,

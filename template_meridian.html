@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <title>{{DOC_TITLE}}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Noto+Naskh+Arabic:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 @page { size: A4; margin: 0; }
 * { box-sizing: border-box; }
@@ -27,7 +28,7 @@ body {
   margin: 0;
   background: var(--page-bg);
   color: var(--ink);
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: "Segoe UI", Arial, "Noto Naskh Arabic", "Amiri", "Arabic Typesetting", "Traditional Arabic", Tahoma, sans-serif;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
@@ -66,7 +67,7 @@ body {
   line-height: 1.2;
 }
 .company-name.arabic-title {
-  font-family: "Arabic Typesetting", "Traditional Arabic", "Noto Sans Arabic", Arial, sans-serif;
+  font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", serif;
 }
 .company-logo {
   display: block;
@@ -331,8 +332,9 @@ td:nth-child(2) {
 }
 .ar, [dir="rtl"] {
   direction: rtl;
-  font-family: "Noto Sans Arabic", "Traditional Arabic", Arial, sans-serif;
+  font-family: "Noto Naskh Arabic", "Traditional Arabic", Arial, sans-serif;
 }
+.arabic-title, .arabic-title.ar { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", serif; font-weight: 700; }
 body.lang-ar .notes-text,
 body.lang-ar .party-line,
 body.lang-ar .company-line {

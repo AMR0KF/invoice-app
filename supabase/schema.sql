@@ -31,7 +31,7 @@ create table if not exists public.user_settings (
   currency text not null default 'USD' check (currency in ('USD', 'LBP')),
   ui_language text not null default 'bi' check (ui_language in ('en', 'ar', 'bi')),
   doc_language text not null default 'bi' check (doc_language in ('en', 'ar', 'bi')),
-  template text not null default 'aurora' check (template in ('aurora', 'meridian', 'meridian_v2', 'obsidian', 'classic')),
+  template text not null default 'aurora' check (template in ('aurora', 'aurora_v2', 'meridian', 'meridian_v2', 'obsidian', 'classic')),
   vat_pct numeric(5,2) not null default 0 check (vat_pct >= 0 and vat_pct <= 100),
   theme text not null default 'dark' check (theme in ('dark', 'light')),
   updated_at timestamptz not null default now()
