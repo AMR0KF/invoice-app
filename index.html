@@ -119,6 +119,8 @@ body.light-theme .mobile-action-bar {
   border-top-color: #d7dce5;
 }
 body.auth-locked .container,
+body.auth-locked #view-invoice,
+body.auth-locked #view-settings,
 body.auth-locked .mobile-action-bar,
 body.auth-locked .topbar-nav,
 body.auth-locked #inv-counter,
@@ -662,60 +664,313 @@ body.auth-locked #auth-cancel-btn {
   border-radius: 8px;
   background: var(--surface2);
 }
-.settings-panel {
-  width: min(920px, 100%); max-height: calc(100vh - 96px); overflow: hidden;
-  background: var(--surface); border: 1px solid var(--border2);
-  border-radius: 10px; box-shadow: 0 24px 70px rgba(0,0,0,.48);
-  display: grid; grid-template-columns: minmax(220px, .85fr) minmax(320px, 1.25fr);
-}
-.settings-side {
-  border-right: 1px solid var(--border); background: var(--surface2);
-  min-height: 520px; overflow-y: auto;
-}
-.settings-main { padding: 18px; overflow-y: auto; }
-.settings-panel.document-mode {
-  grid-template-columns: 1fr;
-}
-.settings-panel.document-mode .settings-side {
-  display: none;
-}
-.settings-tabs {
+/* ── Settings page ──────────────────────────────────────────────────── */
+#view-settings { display: block; }
+#view-settings[hidden] { display: none; }
+.settings-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 22px 22px 80px;
   display: flex;
-  gap: 6px;
-  margin-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  flex-direction: column;
+  gap: 18px;
 }
-.settings-tab {
-  border: 0;
-  border-bottom: 2px solid transparent;
+.settings-page-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding-bottom: 8px;
+}
+.settings-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: transparent;
+  border: 1px solid var(--border);
   color: var(--text2);
-  cursor: pointer;
+  padding: 7px 12px 7px 8px;
+  border-radius: 999px;
   font: inherit;
   font-size: 13px;
-  font-weight: 700;
-  padding: 8px 10px 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
 }
-.settings-tab.active {
+.settings-back svg { width: 16px; height: 16px; }
+.settings-back:hover { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+.settings-page-title h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -.01em;
   color: var(--text);
-  border-bottom-color: var(--accent2);
 }
-.settings-main[data-tab="document"] .settings-companies-only,
-.settings-main[data-tab="companies"] .settings-document-only {
-  display: none !important;
-}
-.settings-section-title {
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 700;
-  margin: 0 0 4px;
-}
-.settings-section-sub {
+.settings-page-title p {
+  margin: 3px 0 0;
   color: var(--text2);
-  font-size: 12px;
-  line-height: 1.45;
-  margin: 0 0 14px;
+  font-size: 13px;
 }
+.settings-anchor-nav {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.settings-anchor {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  color: var(--text2);
+  text-decoration: none;
+  transition: background .15s, color .15s;
+}
+.settings-anchor:hover { color: var(--text); }
+.settings-anchor.active { background: var(--accent); color: #fff; }
+
+.settings-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.15);
+  overflow: hidden;
+}
+.settings-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface2) 0%, var(--surface) 100%);
+}
+.settings-card-head h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -.005em;
+  color: var(--text);
+}
+.settings-card-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text2);
+}
+.settings-card-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.settings-card-body {
+  padding: 18px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+}
+.settings-row-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.settings-row-hint { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+
+.company-search-wrap {
+  position: relative;
+  margin: 14px 20px 4px;
+}
+.company-search-wrap .company-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--text3);
+  pointer-events: none;
+}
+.company-search-wrap input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 12px 10px 36px;
+  font: inherit;
+  font-size: 13px;
+}
+.company-search-wrap input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.settings-company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 14px 20px;
+}
+.company-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform .12s, border-color .15s, box-shadow .15s, background .15s;
+}
+.company-card:hover {
+  border-color: var(--border2);
+  background: var(--surface);
+}
+.company-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 160, 157, .25);
+  background: var(--surface);
+}
+.company-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.company-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .02em;
+}
+.company-card-body { min-width: 0; }
+.company-card-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.company-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0,160,157,.16);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.company-card-line {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.company-card-line.muted { color: var(--text3); }
+.company-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ghost-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.ghost-btn svg { width: 16px; height: 16px; }
+.ghost-btn:hover { background: var(--surface2); border-color: var(--border2); }
+.ghost-btn.use-btn:hover { background: rgba(0,160,157,.15); border-color: var(--accent); color: var(--accent); }
+
+.settings-empty-state {
+  grid-column: 1 / -1;
+  padding: 28px 20px;
+  background: var(--surface2);
+  border: 1px dashed var(--border2);
+  border-radius: 12px;
+  color: var(--text2);
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.55;
+}
+.settings-empty-state strong { color: var(--text); }
+
+.settings-company-editor {
+  margin: 8px 20px 22px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface2);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.settings-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.settings-editor-head h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+}
+.settings-editor-sub {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--text2);
+}
+.settings-editor-pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0,160,157,.16);
+  color: var(--accent);
+}
+.settings-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+body.on-settings .mobile-action-bar { display: none !important; }
+body.on-settings { padding-bottom: 0 !important; }
+
 .theme-switch {
   display: flex;
   align-items: center;
@@ -765,43 +1020,31 @@ body.auth-locked #auth-cancel-btn {
 .switch-control input:checked + .switch-track::after {
   transform: translateX(22px);
 }
-.settings-head {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border);
+.primary-btn,
+.secondary-btn,
+.danger-btn {
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  transition: background .15s, transform .12s, border-color .15s, color .15s;
 }
-.settings-title { font-size: 16px; font-weight: 700; color: var(--text); }
-.settings-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
-.company-list { padding: 8px; }
-.company-item {
-  width: 100%; text-align: left; background: transparent; border: 1px solid transparent;
-  color: var(--text); border-radius: 8px; padding: 10px; cursor: pointer;
-  display: block; transition: background .12s, border-color .12s;
-}
-.company-item:hover { background: var(--surface); }
-.company-item.active { background: rgba(0,160,157,.14); border-color: var(--accent); }
-.company-item-name { font-weight: 600; font-size: 13px; }
-.company-item-meta { color: var(--text2); font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.settings-empty { color: var(--text3); font-size: 12px; padding: 16px 10px; line-height: 1.5; }
-.settings-toolbar { display: flex; gap: 8px; margin-bottom: 14px; }
-.settings-toolbar .secondary-btn,
-.settings-actions .secondary-btn,
-.settings-actions .danger-btn,
-.settings-actions .primary-btn {
-  border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 600;
-  padding: 8px 11px; border: 1px solid var(--border); transition: background .15s, transform .12s;
-}
-.settings-toolbar button:active,
-.settings-actions button:active { transform: translateY(1px); }
+.primary-btn:active,
+.secondary-btn:active,
+.danger-btn:active { transform: translateY(1px); }
 .primary-btn { background: var(--accent); color: #fff; border-color: var(--accent); }
-.primary-btn:hover { background: var(--accent2); }
+.primary-btn:hover { background: var(--accent2); border-color: var(--accent2); }
 .secondary-btn { background: var(--surface2); color: var(--text); }
-.secondary-btn:hover { background: var(--border); }
+.secondary-btn:hover { background: var(--surface); border-color: var(--border2); }
 .danger-btn { background: #3a1f1f; color: #fca5a5; border-color: #7f1d1d; }
 .danger-btn:hover { background: #4a2424; }
-.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .settings-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .settings-form-grid .field.full { grid-column: 1 / -1; }
 .settings-form-grid .settings-toggle { grid-column: 1 / -1; }
+.settings-form-grid .opt-row.full { grid-column: 1 / -1; }
 .action-bar { display: grid; gap: 10px; }
 .action-bar .add-row-btn { margin-top: 0; }
 .action-summary {
@@ -1395,9 +1638,21 @@ body.auth-locked #auth-cancel-btn {
     display: none;
   }
   .card { overflow-x: auto; }
-  .settings-panel { grid-template-columns: 1fr; max-height: calc(100vh - 54px); }
-  .settings-side { min-height: 180px; max-height: 240px; border-right: 0; border-bottom: 1px solid var(--border); }
   .settings-form-grid { grid-template-columns: 1fr; }
+  .settings-page { padding: 14px 12px 80px; gap: 14px; }
+  .settings-page-head { grid-template-columns: auto 1fr; row-gap: 10px; }
+  .settings-anchor-nav { grid-column: 1 / -1; justify-self: stretch; justify-content: space-around; }
+  .settings-anchor { flex: 1; justify-content: center; padding: 8px 6px; }
+  .settings-card-head { flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; }
+  .settings-card-actions { width: 100%; }
+  .settings-card-actions .primary-btn { flex: 1; }
+  .settings-card-body { padding: 14px 16px 16px; }
+  .settings-company-grid { grid-template-columns: 1fr; padding: 12px 14px; }
+  .company-search-wrap { margin: 12px 14px 0; }
+  .settings-company-editor { margin: 6px 14px 18px; padding: 14px; }
+  .settings-editor-actions .primary-btn,
+  .settings-editor-actions .secondary-btn,
+  .settings-editor-actions .danger-btn { flex: 1; min-width: 0; }
   .modal-backdrop { padding: 54px 8px 12px; }
   .pdf-preview-dialog {
     width: calc(100vw - 16px);
@@ -1488,6 +1743,7 @@ body.auth-locked #auth-cancel-btn {
   </div>
 </div>
 
+<section id="view-invoice">
 <div class="container">
 
   <!-- ── LANGUAGE + META ────────────────────────────────────────────── -->
@@ -1777,131 +2033,159 @@ body.auth-locked #auth-cancel-btn {
     <button class="mobile-action-btn" id="mobile-share-btn" type="button" onclick="shareMobilePdf()" disabled>Share</button>
   </div>
 </div>
+</section>
 
-<!-- Settings -->
-<div class="modal-backdrop" id="settings-modal" onclick="closeSettingsOnBackdrop(event)" aria-hidden="true">
-  <div class="settings-panel document-mode" id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-    <aside class="settings-side">
-      <div class="settings-head">
+<!-- Settings (full page view) -->
+<section id="view-settings" hidden>
+  <div class="settings-page">
+
+    <header class="settings-page-head">
+      <button class="settings-back" type="button" onclick="goToInvoice()" aria-label="Back to invoice">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Invoice</span>
+      </button>
+      <div class="settings-page-title">
+        <h1>Settings</h1>
+        <p>Workspace defaults and company profiles.</p>
+      </div>
+      <nav class="settings-anchor-nav" aria-label="Jump to section">
+        <a href="#/settings/workspace" class="settings-anchor active" data-anchor="workspace">Workspace</a>
+        <a href="#/settings/companies" class="settings-anchor" data-anchor="companies">Companies</a>
+      </nav>
+    </header>
+
+    <article class="settings-card" id="settings-workspace" data-section="workspace">
+      <header class="settings-card-head">
         <div>
-          <div class="settings-title" id="settings-title">Settings</div>
-          <div class="settings-sub">Defaults & Companies</div>
+          <h2>Workspace</h2>
+          <p>Defaults applied to every new invoice.</p>
         </div>
-        <button class="icon-btn" onclick="closeSettings()" title="Close settings" aria-label="Close settings">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
-          </svg>
-        </button>
-      </div>
-      <div class="company-list" id="settings-company-list"></div>
-    </aside>
-
-    <section class="settings-main" data-tab="document">
-      <div class="settings-tabs" role="tablist" aria-label="Settings sections">
-        <button class="settings-tab active" id="settings-tab-document" type="button" onclick="setSettingsTab('document')">Document</button>
-        <button class="settings-tab" id="settings-tab-companies" type="button" onclick="setSettingsTab('companies')">Companies</button>
-      </div>
-
-      <div class="settings-toolbar settings-companies-only">
-        <button class="secondary-btn" onclick="newSettingsCompany()">New company</button>
-        <button class="secondary-btn" onclick="refreshSettingsCompanies()">Refresh</button>
-      </div>
-
-      <div class="settings-defaults settings-document-only">
-        <div class="card" style="padding:12px;margin-bottom:14px;background:var(--surface)">
-          <div class="card-title" style="margin-bottom:10px">DOCUMENT DEFAULTS</div>
-          <div class="settings-form-grid">
-            <div class="theme-switch">
-              <div>
-                <div class="settings-section-title" style="margin:0">Light mode</div>
-                <div class="settings-section-sub" style="margin:2px 0 0">Use a brighter workspace and settings panel.</div>
-              </div>
-              <label class="switch-control" for="settings-theme-toggle">
-                <input type="checkbox" id="settings-theme-toggle" onchange="toggleThemeSetting()">
-                <span class="switch-track"></span>
-              </label>
-            </div>
-            <div class="field">
-              <div class="bilabel"><span>UI language</span><span class="ar">لغة الواجهة</span></div>
-              <select id="settings-ui-lang" onchange="saveDocumentSettings()">
-                <option value="en">English</option>
-                <option value="ar">Arabic / عربي</option>
-                <option value="bi">Bilingual / ثنائي</option>
-              </select>
-            </div>
-            <div class="field">
-              <div class="bilabel"><span>Document language</span><span class="ar">لغة المستند</span></div>
-              <select id="settings-doc-lang" onchange="saveDocumentSettings()">
-                <option value="en">English</option>
-                <option value="ar">Arabic / عربي</option>
-                <option value="bi">Bilingual / ثنائي</option>
-              </select>
-            </div>
-            <div class="field">
-              <div class="bilabel"><span>Invoice design</span><span class="ar">تصميم الفاتورة</span></div>
-              <select id="settings-template" onchange="saveDocumentSettings()">
-                <option value="aurora">Aurora</option>
-                <option value="aurora_v2">Aurora v2</option>
-                <option value="meridian">Meridian</option>
-                <option value="meridian_v2">Meridian v2</option>
-                <option value="obsidian">Obsidian</option>
-                <option value="classic">Classic</option>
-              </select>
-            </div>
-            <div class="field">
-              <div class="bilabel"><span>Default currency</span><span class="ar">العملة الافتراضية</span></div>
-              <select id="settings-currency" onchange="saveDocumentSettings()">
-                <option value="USD">USD - US Dollar</option>
-                <option value="LBP">LBP - Lebanese Pound</option>
-              </select>
-            </div>
-            <div class="field">
-              <div class="bilabel"><span>VAT %</span><span class="ar">ضريبة %</span></div>
-              <input type="number" id="settings-vat-pct" value="0" min="0" max="100" onchange="saveDocumentSettings()">
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="settings-companies-only">
-        <div class="settings-section-title">Company profiles</div>
-        <p class="settings-section-sub">Add, edit, delete, or load seller profiles. The individual invoice option is saved per company.</p>
-      </div>
-
-      <div class="settings-form-grid settings-companies-only">
-        <div class="field full">
-          <div class="bilabel"><span>Company name</span><span class="ar">اسم الشركة</span></div>
-          <input id="set-company-name" placeholder="Company name">
-        </div>
-        <div class="field full">
-          <div class="bilabel"><span>Address</span><span class="ar">العنوان</span></div>
-          <input id="set-company-addr" placeholder="Street, city, country">
-        </div>
-        <div class="field">
-          <div class="bilabel"><span>Phone</span><span class="ar">الهاتف</span></div>
-          <input id="set-company-phone" placeholder="+961 ...">
-        </div>
-        <div class="field">
-          <div class="bilabel"><span>Email</span><span class="ar">البريد الإلكتروني</span></div>
-          <input id="set-company-email" type="email" placeholder="billing@company.com">
-        </div>
-        <div class="opt-row company-toggle settings-toggle">
+      </header>
+      <div class="settings-card-body">
+        <div class="settings-row theme-switch">
           <div>
-            <label for="set-company-individual">Individual invoice / فاتورة فردية</label>
-            <div class="hint">Save this as the default for this company profile.</div>
+            <div class="settings-row-label">Light mode</div>
+            <div class="settings-row-hint">Use a brighter workspace and settings panel.</div>
           </div>
-          <input type="checkbox" id="set-company-individual">
+          <label class="switch-control" for="settings-theme-toggle">
+            <input type="checkbox" id="settings-theme-toggle" onchange="toggleThemeSetting()">
+            <span class="switch-track"></span>
+          </label>
+        </div>
+        <div class="settings-form-grid">
+          <div class="field">
+            <div class="bilabel"><span>UI language</span><span class="ar">لغة الواجهة</span></div>
+            <select id="settings-ui-lang" onchange="saveDocumentSettings()">
+              <option value="en">English</option>
+              <option value="ar">Arabic / عربي</option>
+              <option value="bi">Bilingual / ثنائي</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="bilabel"><span>Document language</span><span class="ar">لغة المستند</span></div>
+            <select id="settings-doc-lang" onchange="saveDocumentSettings()">
+              <option value="en">English</option>
+              <option value="ar">Arabic / عربي</option>
+              <option value="bi">Bilingual / ثنائي</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="bilabel"><span>Invoice design</span><span class="ar">تصميم الفاتورة</span></div>
+            <select id="settings-template" onchange="saveDocumentSettings()">
+              <option value="aurora">Aurora</option>
+              <option value="aurora_v2">Aurora v2</option>
+              <option value="meridian">Meridian</option>
+              <option value="meridian_v2">Meridian v2</option>
+              <option value="obsidian">Obsidian</option>
+              <option value="classic">Classic</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="bilabel"><span>Default currency</span><span class="ar">العملة الافتراضية</span></div>
+            <select id="settings-currency" onchange="saveDocumentSettings()">
+              <option value="USD">USD - US Dollar</option>
+              <option value="LBP">LBP - Lebanese Pound</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="bilabel"><span>VAT %</span><span class="ar">ضريبة %</span></div>
+            <input type="number" id="settings-vat-pct" value="0" min="0" max="100" onchange="saveDocumentSettings()">
+          </div>
         </div>
       </div>
+    </article>
 
-      <div class="settings-actions settings-companies-only">
-        <button class="primary-btn" onclick="saveSettingsCompany()">Save company</button>
-        <button class="secondary-btn" onclick="useSettingsCompanyOnInvoice()">Use on invoice</button>
-        <button class="danger-btn" onclick="deleteSettingsCompany()">Delete</button>
+    <article class="settings-card" id="settings-companies-card" data-section="companies">
+      <header class="settings-card-head">
+        <div>
+          <h2>Companies</h2>
+          <p><span id="settings-company-count">0</span> profile<span id="settings-company-plural">s</span> saved on this account.</p>
+        </div>
+        <div class="settings-card-actions">
+          <button class="primary-btn" type="button" onclick="newSettingsCompany()">+ New company</button>
+          <button class="ghost-btn" type="button" onclick="refreshSettingsCompanies()" title="Refresh" aria-label="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="company-search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class="company-search-icon">
+          <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+          <path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <input id="settings-company-search" type="search" placeholder="Search by name, email, or phone..." oninput="renderSettingsCompanyList()">
       </div>
-    </section>
+
+      <div id="settings-company-grid" class="settings-company-grid"></div>
+
+      <section class="settings-company-editor" id="settings-company-editor" aria-live="polite">
+        <header class="settings-editor-head">
+          <div>
+            <h3 id="settings-editor-title">New company</h3>
+            <p id="settings-editor-sub" class="settings-editor-sub">Fill in the details below and save.</p>
+          </div>
+          <span class="settings-editor-pill" id="settings-editor-pill" hidden>Editing</span>
+        </header>
+        <div class="settings-form-grid">
+          <div class="field full">
+            <div class="bilabel"><span>Company name</span><span class="ar">اسم الشركة</span></div>
+            <input id="set-company-name" placeholder="Company name" oninput="updateEditorTitle()">
+          </div>
+          <div class="field full">
+            <div class="bilabel"><span>Address</span><span class="ar">العنوان</span></div>
+            <input id="set-company-addr" placeholder="Street, city, country">
+          </div>
+          <div class="field">
+            <div class="bilabel"><span>Phone</span><span class="ar">الهاتف</span></div>
+            <input id="set-company-phone" placeholder="+961 ...">
+          </div>
+          <div class="field">
+            <div class="bilabel"><span>Email</span><span class="ar">البريد الإلكتروني</span></div>
+            <input id="set-company-email" type="email" placeholder="billing@company.com">
+          </div>
+          <div class="opt-row company-toggle settings-toggle full">
+            <div>
+              <label for="set-company-individual">Individual invoice / فاتورة فردية</label>
+              <div class="hint">Save this as the default for this company profile.</div>
+            </div>
+            <input type="checkbox" id="set-company-individual">
+          </div>
+        </div>
+        <footer class="settings-editor-actions">
+          <button class="primary-btn" type="button" onclick="saveSettingsCompany()">Save</button>
+          <button class="secondary-btn" type="button" onclick="useSettingsCompanyOnInvoice()">Use on invoice</button>
+          <button class="danger-btn" type="button" id="settings-delete-btn" onclick="deleteSettingsCompany()" hidden>Delete</button>
+        </footer>
+      </section>
+    </article>
+
   </div>
-</div>
+</section>
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
@@ -1912,7 +2196,6 @@ let selCompId  = null;
 let selCustId  = null;
 let settingsCompanyId = null;
 let lastGeneratedPdf = null;
-let settingsActiveTab = 'document';
 let supabaseClient = null;
 let supabaseUser = null;
 let supabaseConfigured = false;
@@ -1938,6 +2221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadCustomers();
   toggleDiscount();
   if (!rowCount) addRow();
+  routeView();
 });
 
 // ── Language toggle ────────────────────────────────────────────────────────
@@ -2114,48 +2398,63 @@ function updateActionSummary() {
   }
 }
 
-function setSettingsTab(tab) {
-  settingsActiveTab = tab === 'companies' ? 'companies' : 'document';
-  const main = document.querySelector('.settings-main');
-  const panel = document.getElementById('settings-panel');
-  if (main) main.dataset.tab = settingsActiveTab;
-  if (panel) {
-    panel.classList.toggle('document-mode', settingsActiveTab === 'document');
-    panel.classList.toggle('companies-mode', settingsActiveTab === 'companies');
+function routeView() {
+  const hash = (location.hash || '').replace(/^#/, '');
+  const onSettings = hash.startsWith('/settings');
+  const anchor = (hash.split('/')[2] || 'workspace');
+  document.getElementById('view-invoice').hidden = onSettings;
+  document.getElementById('view-settings').hidden = !onSettings;
+  document.body.classList.toggle('on-settings', onSettings);
+  if (!onSettings) return;
+  loadDocumentSettings();
+  renderSettingsCompanyList();
+  if (settingsCompanyId && companies.some(c => c.id === settingsCompanyId)) {
+    selectSettingsCompany(settingsCompanyId);
+  } else if (companies.length) {
+    selectSettingsCompany(companies[0].id);
+  } else {
+    newSettingsCompany();
   }
-  document.getElementById('settings-tab-document')?.classList.toggle('active', settingsActiveTab === 'document');
-  document.getElementById('settings-tab-companies')?.classList.toggle('active', settingsActiveTab === 'companies');
-  if (settingsActiveTab === 'companies') renderSettingsCompanyList();
+  document.querySelectorAll('.settings-anchor').forEach(el => {
+    el.classList.toggle('active', el.dataset.anchor === anchor);
+  });
+  const target = document.querySelector(`[data-section="${anchor}"]`);
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  else window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function openSettings(tab = 'document') {
-  const modal = document.getElementById('settings-modal');
-  modal.classList.add('open');
-  modal.setAttribute('aria-hidden', 'false');
-  loadDocumentSettings();
-  setSettingsTab(tab);
-  renderSettingsCompanyList();
-  if (!settingsCompanyId && companies.length) selectSettingsCompany(companies[0].id);
+window.addEventListener('hashchange', routeView);
+
+function openSettings(tab = 'workspace') {
+  const target = tab === 'companies' ? '#/settings/companies' : '#/settings/workspace';
+  if (location.hash === target) routeView(); else location.hash = target;
 }
 
 function closeSettings() {
-  const modal = document.getElementById('settings-modal');
-  modal.classList.remove('open');
-  modal.setAttribute('aria-hidden', 'true');
+  if (!document.getElementById('view-settings').hidden) goToInvoice();
 }
 
-function closeSettingsOnBackdrop(event) {
-  if (event.target.id === 'settings-modal') closeSettings();
+function goToInvoice() {
+  if (location.hash.startsWith('#/settings')) location.hash = '#/';
+  else routeView();
 }
+
+function closeSettingsOnBackdrop() { /* retained for legacy onclick handlers */ }
 
 function newSettingsCompany() {
   settingsCompanyId = null;
   ['set-company-name','set-company-addr','set-company-phone','set-company-email'].forEach(id => {
-    document.getElementById(id).value = '';
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
-  document.getElementById('set-company-individual').checked = false;
+  const ind = document.getElementById('set-company-individual');
+  if (ind) ind.checked = false;
+  updateEditorChrome();
   renderSettingsCompanyList();
-  document.getElementById('set-company-name').focus();
+  const nameInput = document.getElementById('set-company-name');
+  if (nameInput) nameInput.focus();
+  const editor = document.getElementById('settings-company-editor');
+  if (editor) editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function refreshSettingsCompanies() {
@@ -2165,49 +2464,144 @@ async function refreshSettingsCompanies() {
   toast('Companies refreshed', 'success');
 }
 
+function companyInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 function renderSettingsCompanyList() {
-  const list = document.getElementById('settings-company-list');
-  if (!list) return;
-  list.innerHTML = '';
-  if (!companies.length) {
+  const grid = document.getElementById('settings-company-grid');
+  if (!grid) return;
+  const searchEl = document.getElementById('settings-company-search');
+  const search = (searchEl?.value || '').trim().toLowerCase();
+  const filtered = !search ? companies : companies.filter(c => {
+    return ['name','email','phone','address'].some(k => (c[k]||'').toLowerCase().includes(search));
+  });
+  const count = companies.length;
+  const countEl = document.getElementById('settings-company-count');
+  const plural = document.getElementById('settings-company-plural');
+  if (countEl) countEl.textContent = String(count);
+  if (plural) plural.textContent = count === 1 ? '' : 's';
+
+  grid.innerHTML = '';
+  if (!filtered.length) {
     const empty = document.createElement('div');
-    empty.className = 'settings-empty';
-    empty.textContent = 'No companies saved yet. Add your company details on the right.';
-    list.appendChild(empty);
+    empty.className = 'settings-empty-state';
+    if (search) {
+      empty.textContent = `No companies match "${search}".`;
+    } else {
+      empty.innerHTML = 'No companies yet. Click <strong>+ New company</strong> above to add your first profile.';
+    }
+    grid.appendChild(empty);
     return;
   }
-  companies.forEach(company => {
-    const btn = document.createElement('button');
-    btn.className = 'company-item' + (company.id === settingsCompanyId ? ' active' : '');
-    btn.type = 'button';
-    btn.onclick = () => selectSettingsCompany(company.id);
+
+  filtered.forEach(company => {
+    const card = document.createElement('article');
+    card.className = 'company-card' + (company.id === settingsCompanyId ? ' selected' : '');
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', `Edit ${company.name || 'company'}`);
+
+    const avatar = document.createElement('div');
+    avatar.className = 'company-avatar';
+    avatar.textContent = companyInitials(company.name);
+
+    const body = document.createElement('div');
+    body.className = 'company-card-body';
 
     const name = document.createElement('div');
-    name.className = 'company-item-name';
+    name.className = 'company-card-name';
     name.textContent = company.name || 'Unnamed company';
+    body.appendChild(name);
 
-    const meta = document.createElement('div');
-    meta.className = 'company-item-meta';
-    meta.textContent = [
-      company.individual_disclaimer ? 'Individual invoice' : '',
-      [company.phone, company.email].filter(Boolean).join(' - ') || company.address || 'No contact details'
-    ].filter(Boolean).join(' - ');
+    if (company.individual_disclaimer) {
+      const badge = document.createElement('span');
+      badge.className = 'company-badge';
+      badge.textContent = 'Individual';
+      body.appendChild(badge);
+    }
 
-    btn.appendChild(name);
-    btn.appendChild(meta);
-    list.appendChild(btn);
+    const contact = [company.email, company.phone].filter(Boolean).join(' · ');
+    if (contact) {
+      const line = document.createElement('div');
+      line.className = 'company-card-line';
+      line.textContent = contact;
+      body.appendChild(line);
+    }
+    if (company.address) {
+      const addr = document.createElement('div');
+      addr.className = 'company-card-line muted';
+      addr.textContent = company.address;
+      body.appendChild(addr);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'company-card-actions';
+    const useBtn = document.createElement('button');
+    useBtn.type = 'button';
+    useBtn.className = 'ghost-btn use-btn';
+    useBtn.textContent = 'Use';
+    useBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectSettingsCompany(company.id);
+      useSettingsCompanyOnInvoice();
+    });
+    actions.appendChild(useBtn);
+
+    card.appendChild(avatar);
+    card.appendChild(body);
+    card.appendChild(actions);
+    card.addEventListener('click', () => selectSettingsCompany(company.id));
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        selectSettingsCompany(company.id);
+      }
+    });
+    grid.appendChild(card);
   });
+}
+
+function updateEditorChrome() {
+  const title = document.getElementById('settings-editor-title');
+  const sub = document.getElementById('settings-editor-sub');
+  const pill = document.getElementById('settings-editor-pill');
+  const delBtn = document.getElementById('settings-delete-btn');
+  const editing = !!settingsCompanyId;
+  const company = editing ? companies.find(c => c.id === settingsCompanyId) : null;
+  if (title) title.textContent = editing ? (company?.name || 'Untitled company') : 'New company';
+  if (sub) sub.textContent = editing ? 'Update the profile and save changes.' : 'Fill in the details below and save.';
+  if (pill) pill.hidden = !editing;
+  if (delBtn) delBtn.hidden = !editing;
+}
+
+function updateEditorTitle() {
+  if (settingsCompanyId) return;
+  const name = document.getElementById('set-company-name')?.value.trim();
+  const title = document.getElementById('settings-editor-title');
+  if (title) title.textContent = name ? name : 'New company';
 }
 
 function selectSettingsCompany(id) {
   const company = companies.find(c => c.id === id);
   if (!company) return;
   settingsCompanyId = id;
-  document.getElementById('set-company-name').value = company.name || '';
-  document.getElementById('set-company-addr').value = company.address || '';
-  document.getElementById('set-company-phone').value = company.phone || '';
-  document.getElementById('set-company-email').value = company.email || '';
-  document.getElementById('set-company-individual').checked = !!company.individual_disclaimer;
+  const map = {
+    'set-company-name': company.name || '',
+    'set-company-addr': company.address || '',
+    'set-company-phone': company.phone || '',
+    'set-company-email': company.email || '',
+  };
+  for (const [el, val] of Object.entries(map)) {
+    const node = document.getElementById(el);
+    if (node) node.value = val;
+  }
+  const ind = document.getElementById('set-company-individual');
+  if (ind) ind.checked = !!company.individual_disclaimer;
+  updateEditorChrome();
   renderSettingsCompanyList();
 }
 
@@ -2320,9 +2714,9 @@ function useSettingsCompanyOnInvoice(showToast = true) {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
-    closeSettings();
     if (supabaseActive()) closeAuthModal();
     closePdfPreview();
+    if (location.hash.startsWith('#/settings')) goToInvoice();
   }
 });
 
