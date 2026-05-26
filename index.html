@@ -1627,6 +1627,7 @@ body.auth-locked #auth-cancel-btn {
       </thead>
       <tbody id="items-body"></tbody>
     </table>
+    <datalist id="item-desc-history"></datalist>
 
     <button class="add-row-btn" onclick="addRow()">Add item / إضافة بند</button>
 
@@ -1924,6 +1925,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('inv-date').value = today;
   document.getElementById('inv-due').value  = new Date(Date.now() + 7*864e5).toISOString().split('T')[0];
   loadDocumentSettings();
+  renderItemHistoryDatalist();
   await initSupabaseAuth();
   if (!supabaseActive()) {
     toggleDiscount();
@@ -2486,12 +2488,57 @@ async function signOutSupabase() {
   toast('Signed out', 'success');
 }
 
+const ITEM_HISTORY_KEY = 'inv_item_history';
+const ITEM_HISTORY_MAX = 80;
+
+function getItemHistory() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ITEM_HISTORY_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(s => typeof s === 'string' && s.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+function renderItemHistoryDatalist() {
+  const dl = document.getElementById('item-desc-history');
+  if (!dl) return;
+  const opts = getItemHistory().map(desc => {
+    const v = desc.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `<option value="${v}">`;
+  });
+  dl.innerHTML = opts.join('');
+}
+
+function rememberItems(items) {
+  if (!Array.isArray(items) || !items.length) return;
+  const fresh = items.map(it => (it && it.description ? String(it.description).trim() : '')).filter(Boolean);
+  if (!fresh.length) return;
+  const merged = [...fresh, ...getItemHistory()];
+  const seen = new Set();
+  const out = [];
+  for (const desc of merged) {
+    const key = desc.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(desc);
+    if (out.length >= ITEM_HISTORY_MAX) break;
+  }
+  localStorage.setItem(ITEM_HISTORY_KEY, JSON.stringify(out));
+  renderItemHistoryDatalist();
+}
+
 async function loadInvoiceNumber() {
+  const cached = localStorage.getItem('inv_next_number');
+  if (cached) {
+    setInvoiceNumber(cached);
+    return;
+  }
   try {
     const r = await API('GET', '/api/invoice-number');
     setInvoiceNumber(r.invoice_number || 'INV-001');
   } catch {
-    setInvoiceNumber(localStorage.getItem('inv_next_number') || 'INV-001');
+    setInvoiceNumber('INV-001');
   }
 }
 
@@ -2858,7 +2905,7 @@ function addRow() {
   tr.id    = 'row-' + n;
   tr.innerHTML = `
     <td style="text-align:center;color:var(--text3);font-size:12px;padding:4px 6px">${n}</td>
-    <td><input type="text" placeholder="Item description / وصف البند" id="desc-${n}" oninput="recalc()"></td>
+    <td><input type="text" placeholder="Item description / وصف البند" id="desc-${n}" list="item-desc-history" autocomplete="off" oninput="recalc()"></td>
     <td class="r"><input type="number" value="1" min="0" step="1"    id="qty-${n}"  oninput="recalc()" style="width:70px"></td>
     <td class="r"><input type="number" value="0" min="0" step="0.01" id="up-${n}"   oninput="recalc()" style="width:90px"></td>
     <td class="r discount-col"><input type="number" value="0" min="0" max="100"   id="disc-${n}" oninput="recalc()" style="width:60px"></td>
@@ -3115,6 +3162,7 @@ async function generatePdfFile(options = {}) {
       }
       if (options.open) window.open(url, '_blank');
       setInvoiceNumber(nextInvoiceNumber(data.invoice_number));
+      rememberItems(data.items);
       toast(`${filename} ready`, 'success');
       return filename;
     }
@@ -3136,6 +3184,7 @@ async function generatePdfFile(options = {}) {
       window.open(pdfDownloadUrl(r.filename), '_blank');
     }
     setInvoiceNumber(r.next_invoice_number || document.getElementById('inv-num').value);
+    rememberItems(data.items);
     toast(`${r.filename} ready`, 'success');
     return r.filename;
   } catch (err) {
