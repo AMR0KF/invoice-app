@@ -123,7 +123,22 @@ function normalizeTemplate(value) {
 const FONT_LINKS = `
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&family=Amiri:ital,wght@0,400;0,700;1,400&family=Noto+Naskh+Arabic:wght@400;500;700&display=swap" rel="stylesheet">`;
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&family=Amiri:ital,wght@0,400;0,700;1,400&family=Noto+Naskh+Arabic:wght@400;500;700&display=block" rel="stylesheet">`;
+
+const VERCEL_FONT_URLS = [
+  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoNaskhArabic/NotoNaskhArabic-Regular.ttf",
+  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoNaskhArabic/NotoNaskhArabic-Bold.ttf",
+  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf",
+  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf",
+];
+let vercelFontsLoaded = false;
+async function ensureVercelFonts() {
+  if (!isVercel || vercelFontsLoaded) return;
+  for (const url of VERCEL_FONT_URLS) {
+    try { await chromium.font(url); } catch (err) { /* tolerate single-font failures */ }
+  }
+  vercelFontsLoaded = true;
+}
 
 function moneyCompact(n) {
   return fmt(n).replace(/\.00$/, "");
@@ -787,13 +802,22 @@ async function buildAndSavePDF(data) {
 }
 
 async function buildPDFBuffer(data) {
+  await ensureVercelFonts();
   const html = renderTemplate(data);
   let browser;
   try {
     browser = await puppeteer.launch(await browserLaunchOptions());
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
-    await page.evaluate(() => document.fonts && document.fonts.ready);
+    await page.evaluate(async () => {
+      if (!document.fonts) return;
+      try {
+        await document.fonts.load('400 12pt "Noto Naskh Arabic"');
+        await document.fonts.load('700 12pt "Noto Naskh Arabic"');
+        await document.fonts.load('400 12pt "Inter"');
+      } catch (e) { /* ignore */ }
+      await document.fonts.ready;
+    });
     return await page.pdf({
       format: "A4",
       printBackground: true,
