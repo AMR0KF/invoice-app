@@ -151,24 +151,38 @@ body.auth-locked {
 .topbar-logo { font-size: 18px; font-weight: 700; color: var(--accent2); }
 .topbar-sub  { font-size: 12px; color: var(--text2); }
 .topbar-nav {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 18px;
+  gap: 2px;
+  margin-left: 22px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
 }
 .nav-link {
-  color: var(--text);
+  position: relative;
+  color: var(--text2);
   background: transparent;
   border: 0;
-  border-radius: 4px;
-  padding: 6px 10px;
+  border-radius: 999px;
+  padding: 7px 16px;
   font: inherit;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
+  transition: color .15s, background .15s;
 }
-.nav-link:hover,
+.nav-link:hover { color: var(--text); }
 .nav-link.active {
-  background: #343947;
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: 0 1px 0 rgba(255,255,255,.08) inset, 0 4px 12px rgba(0,160,157,.22);
 }
+body.light-theme .topbar-nav { background: #f1f5f9; border-color: #e2e8f0; }
+body.light-theme .nav-link { color: #475569; }
+body.light-theme .nav-link:hover { color: #0f172a; }
+body.light-theme .nav-link.active { color: #ffffff; box-shadow: 0 4px 12px rgba(13,148,136,.22); }
 .topbar-spacer { flex: 1; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 .auth-pill {
@@ -1701,15 +1715,68 @@ body.on-settings { padding-bottom: 0 !important; }
       border-top: 1px solid rgba(15,23,42,.08);
       box-shadow: 0 -8px 24px rgba(15,23,42,.10);
     }
+    .mobile-action-btn,
+    .gen-btn,
+    .add-row-btn,
+    .primary-btn,
+    .secondary-btn,
+    .danger-btn,
+    .ghost-btn,
+    .auth-pill,
+    .topbar-nav,
+    .nav-link {
+      -webkit-backdrop-filter: saturate(160%) blur(14px);
+      backdrop-filter: saturate(160%) blur(14px);
+    }
     .mobile-action-btn {
       background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.12);
-      -webkit-backdrop-filter: blur(10px);
-      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,.14);
     }
-    body.light-theme .mobile-action-btn {
-      background: rgba(15,23,42,.04);
-      border-color: rgba(15,23,42,.10);
+    .mobile-action-btn.primary {
+      background: linear-gradient(135deg, rgba(0,160,157,.78) 0%, rgba(0,199,189,.78) 100%);
+      border-color: rgba(255,255,255,.20);
+      box-shadow: 0 6px 18px rgba(0,160,157,.30), 0 1px 0 rgba(255,255,255,.10) inset;
+    }
+    .gen-btn {
+      background: linear-gradient(135deg, rgba(0,160,157,.72) 0%, rgba(0,199,189,.72) 100%);
+      box-shadow: 0 6px 18px rgba(0,160,157,.28), 0 1px 0 rgba(255,255,255,.10) inset;
+    }
+    .primary-btn {
+      background: linear-gradient(135deg, rgba(0,160,157,.72) 0%, rgba(0,199,189,.72) 100%);
+      border-color: rgba(255,255,255,.18);
+      box-shadow: 0 4px 14px rgba(0,160,157,.24), 0 1px 0 rgba(255,255,255,.10) inset;
+    }
+    .secondary-btn,
+    .ghost-btn,
+    .add-row-btn,
+    .auth-pill {
+      background: rgba(255,255,255,.06);
+      border-color: rgba(255,255,255,.12);
+    }
+    .danger-btn {
+      background: rgba(248,113,113,.12);
+      border-color: rgba(248,113,113,.30);
+    }
+    .topbar-nav {
+      background: rgba(255,255,255,.06);
+      border-color: rgba(255,255,255,.10);
+    }
+    .nav-link.active {
+      background: linear-gradient(135deg, rgba(0,160,157,.82) 0%, rgba(0,199,189,.82) 100%);
+      box-shadow: 0 4px 12px rgba(0,160,157,.30), 0 1px 0 rgba(255,255,255,.10) inset;
+    }
+    body.light-theme .mobile-action-btn,
+    body.light-theme .secondary-btn,
+    body.light-theme .ghost-btn,
+    body.light-theme .add-row-btn,
+    body.light-theme .auth-pill,
+    body.light-theme .topbar-nav {
+      background: rgba(255,255,255,.55);
+      border-color: rgba(15,23,42,.08);
+    }
+    body.light-theme .danger-btn {
+      background: rgba(220,38,38,.10);
+      border-color: rgba(220,38,38,.28);
     }
     .card,
     .settings-card,
@@ -1758,12 +1825,6 @@ body.on-settings { padding-bottom: 0 !important; }
     <button class="auth-pill" id="supabase-auth-btn" type="button" onclick="openAuthModal()">Local data</button>
     <button class="auth-signout" id="supabase-signout-btn" type="button" onclick="signOutSupabase()" style="display:none">Sign out</button>
     <div style="font-size:11px;color:var(--text3);" id="inv-counter">INV-001</div>
-    <button class="icon-btn" onclick="openSettings()" title="Settings" aria-label="Open settings">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" stroke="currentColor" stroke-width="1.8"/>
-        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05a2 2 0 0 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.08a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.05.05a2 2 0 0 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.04A1.7 1.7 0 0 0 4.6 8.92a1.7 1.7 0 0 0-.34-1.87l-.05-.05a2 2 0 0 1 2.83-2.83l.05.05a1.7 1.7 0 0 0 1.87.34A1.7 1.7 0 0 0 10 3V3a2 2 0 0 1 4 0v.08a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.05-.05a2 2 0 0 1 2.83 2.83l-.05.05a1.7 1.7 0 0 0-.34 1.87A1.7 1.7 0 0 0 21 10h0a2 2 0 0 1 0 4h0A1.7 1.7 0 0 0 19.4 15Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-      </svg>
-    </button>
   </div>
 </div>
 
