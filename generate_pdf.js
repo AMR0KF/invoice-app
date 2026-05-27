@@ -425,8 +425,7 @@ function renderAuroraV2(data) {
       .filter((k) => party[k])
       .map((k) => `<div class="party-line" dir="auto">${esc(party[k])}</div>`)
       .join("");
-    const nameClass = hasArabic(party.name || "") ? "party-name arabic-title" : "party-name";
-    return `<div class="party"><div class="party-label">${esc(label)}</div><div class="${nameClass}" dir="auto">${esc(party.name || "—")}</div>${lines}</div>`;
+    return `<div class="party"><div class="party-label">${esc(label)}</div><div class="party-name" dir="auto">${esc(party.name || "—")}</div>${lines}</div>`;
   };
 
   const rows = totals.rows.map((item, idx) => `
@@ -462,15 +461,13 @@ ${FONT_LINKS}
 @page { size: A4; margin: 0; }
 * { box-sizing: border-box; }
 :root {
-  --ink: #0b1020;
-  --ink-mid: #344054;
-  --muted: #667085;
-  --line: #e6e8f0;
-  --row-alt: #fafbff;
-  --brand-1: #6366f1;
-  --brand-2: #8b5cf6;
-  --brand-3: #ec4899;
-  --accent-soft: #eef2ff;
+  --ink: #0f172a;
+  --ink-mid: #334155;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --row-alt: #f8fafc;
+  --accent: #0f766e;
+  --accent-soft: #ecfdf5;
 }
 body {
   margin: 0;
@@ -492,8 +489,8 @@ body {
   padding: 24mm 22mm 22mm;
 }
 .accent-band {
-  position: absolute; top: 0; left: 0; right: 0; height: 5mm;
-  background: linear-gradient(95deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 100%);
+  position: absolute; top: 0; left: 0; right: 0; height: 1.5mm;
+  background: var(--accent);
 }
 .header {
   display: flex; justify-content: space-between; align-items: flex-start;
@@ -506,11 +503,11 @@ body {
 .brand-mark {
   display: inline-flex; align-items: center; gap: 2mm;
   font-size: 7.5pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--brand-1); margin-bottom: 2mm;
+  color: var(--accent); margin-bottom: 2mm;
 }
 .brand-mark:before {
-  content: ""; display: inline-block; width: 3mm; height: 3mm; border-radius: 50%;
-  background: linear-gradient(135deg, var(--brand-1), var(--brand-3));
+  content: ""; display: inline-block; width: 2mm; height: 2mm; border-radius: 50%;
+  background: var(--accent);
 }
 .brand-name { margin: 0; font-size: 16pt; font-weight: 700; color: var(--ink); line-height: 1.1; }
 .brand-name.arabic-title { font-size: 24pt; }
@@ -539,13 +536,12 @@ body {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10mm;
   margin-bottom: 11mm;
 }
-.party { padding-top: 4mm; border-top: 2px solid var(--brand-1); }
+.party { padding-top: 4mm; border-top: 1px solid var(--ink); }
 .party-label {
   font-size: 7.2pt; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
-  color: var(--brand-1); margin: 0 0 2.5mm;
+  color: var(--muted); margin: 0 0 2.5mm;
 }
-.party-name { font-size: 11pt; font-weight: 600; color: var(--ink); margin: 0 0 1.5mm; line-height: 1.25; }
-.party-name.arabic-title { font-size: 17pt; }
+.party-name { font-size: 11pt; font-weight: 600; color: var(--ink); margin: 0 0 1.5mm; line-height: 1.3; }
 .party-line { font-size: 8pt; color: var(--ink-mid); line-height: 1.55; }
 .items-table { width: 100%; border-collapse: collapse; margin-bottom: 8mm; }
 .items-table th {
@@ -580,15 +576,15 @@ body {
 .total-row span { color: var(--muted); font-weight: 500; }
 .total-row strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .grand {
-  margin-top: 4mm; padding: 5mm 6mm; border-radius: 4mm;
-  background: linear-gradient(120deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 110%);
+  margin-top: 4mm; padding: 5mm 6mm; border-radius: 1.5mm;
+  background: var(--ink);
   color: #ffffff;
   display: flex; justify-content: space-between; align-items: center; gap: 6mm;
-  box-shadow: 0 4mm 12mm rgba(99, 102, 241, .25);
+  box-shadow: none;
 }
 .grand .grand-label {
   font-size: 7.5pt; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
-  opacity: .9;
+  opacity: .75;
 }
 .grand .grand-value {
   font-family: "JetBrains Mono", "Inter", monospace; font-size: 16pt; font-weight: 700;
@@ -600,8 +596,7 @@ body {
 }
 .footer:before {
   content: ""; display: block; height: 1px; margin-bottom: 5mm;
-  background: linear-gradient(90deg, transparent 0%, var(--brand-1) 35%, var(--brand-3) 65%, transparent 100%);
-  opacity: .35;
+  background: var(--line);
 }
 .footer .thanks-en { margin: 0 0 1mm; font-weight: 600; color: var(--ink-mid); letter-spacing: .04em; }
 .footer .thanks-ar { margin: 0; font-family: "Noto Naskh Arabic", "Traditional Arabic", Arial, sans-serif; font-size: 9pt; }
