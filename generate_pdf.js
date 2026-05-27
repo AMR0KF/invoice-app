@@ -319,18 +319,19 @@ small, .section-title { color: var(--brand); font-size: 7.5pt; font-weight: 800;
 .meta strong { display: block; margin-top: 2mm; font-size: 10pt; }
 .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; margin-bottom: 8mm; }
 .party { border: 1px solid #edf0f4; border-radius: 2mm; padding: 5mm; min-height: 24mm; }
-body.aurora .parties { gap: 4mm; margin-top: 0; margin-bottom: 8mm; }
+body.aurora .parties { gap: 5mm; margin-top: 0; margin-bottom: 8mm; }
 body.aurora .party {
-  min-height: 25mm;
-  border: 1px solid #dfe4ff;
-  border-radius: 5mm;
+  min-height: 22mm;
+  border: 1px solid #e6e8f0;
+  border-left: 2.5mm solid #635bff;
+  border-radius: 2mm;
   padding: 4.5mm 5mm;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfbff 100%);
-  box-shadow: 0 4mm 10mm rgba(99, 91, 255, .08);
+  background: #ffffff;
+  box-shadow: none;
 }
-body.aurora .party h3 { color: #635bff; font-size: 7.2pt; margin-bottom: 2.2mm; }
-body.aurora .party strong { display: block; color: #111827; font-size: 11pt; line-height: 1.25; margin-bottom: 1.5mm; }
-body.aurora .party span { color: #475467; font-size: 8pt; line-height: 1.45; }
+body.aurora .party h3 { color: #635bff; font-size: 7pt; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 2mm; font-weight: 700; }
+body.aurora .party strong { display: block; color: #101828; font-size: 10.5pt; line-height: 1.25; margin-bottom: 1.2mm; font-weight: 600; }
+body.aurora .party span { color: #475467; font-size: 8pt; line-height: 1.5; }
 body.meridian .parties { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 6mm 0; margin-bottom: 9mm; }
 body.meridian .party { border: 0; border-radius: 0; padding: 0; min-height: 18mm; }
 .party h3 { margin: 0 0 2mm; color: var(--brand); font-size: 7.5pt; letter-spacing: .08em; }
