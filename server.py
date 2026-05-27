@@ -121,17 +121,37 @@ def calc_invoice(data):
         subtotal += gross
         total_discount += discount
         rows.append({**item, "qty": qty, "unit_price": unit, "discount_pct": discount_pct, "net": net})
+
     net_subtotal = subtotal - total_discount
+
+    # Invoice-wide discount: applied after line discounts, before VAT.
+    inv_disc_payload = data.get("invoice_discount") or {}
+    inv_disc_enabled = bool(inv_disc_payload.get("enabled"))
+    inv_disc_type = "fixed" if inv_disc_payload.get("type") == "fixed" else "pct"
+    inv_disc_value = max(0.0, float(inv_disc_payload.get("value") or 0))
+    if inv_disc_enabled:
+        inv_disc_amount = inv_disc_value if inv_disc_type == "fixed" else net_subtotal * inv_disc_value / 100
+        if inv_disc_amount > net_subtotal:
+            inv_disc_amount = net_subtotal
+    else:
+        inv_disc_amount = 0.0
+
+    taxable_base = net_subtotal - inv_disc_amount
     vat_pct = float(data.get("vat_pct") or 0)
-    vat = net_subtotal * vat_pct / 100
+    vat = taxable_base * vat_pct / 100
     return {
         "rows": rows,
         "subtotal": subtotal,
         "discount": total_discount,
+        "invoice_discount_enabled": inv_disc_enabled,
+        "invoice_discount_type": inv_disc_type,
+        "invoice_discount_value": inv_disc_value,
+        "invoice_discount": inv_disc_amount,
         "vat_pct": vat_pct,
         "vat": vat,
-        "grand": net_subtotal + vat,
+        "grand": taxable_base + vat,
         "show_discount": include_discount and total_discount > 0,
+        "show_invoice_discount": inv_disc_enabled and inv_disc_amount > 0,
     }
 
 def e(value):
@@ -211,12 +231,21 @@ def render_print_invoice(data):
     th_amount = bi_label(lang, "AMOUNT", "المجموع")
     th_disc = bi_label(lang, "DISC.", "خصم")
     subtotal_label = bi_label(lang, "Subtotal", "المجموع الفرعي")
-    discount_label = bi_label(lang, "Discount", "الخصم")
+    discount_label = bi_label(lang, "Line discount", "خصم البنود")
+    invoice_discount_label = bi_label(lang, "Invoice discount", "خصم الفاتورة")
     total_label = bi_label(lang, "Total", "الإجمالي")
     thank_en = "Thank you for your business!" if lang in {"en", "bi"} else ""
     thank_ar = "شكراً لتعاملكم معنا" if lang in {"ar", "bi"} else ""
     discount_head = f"<th>{th_disc}</th>" if totals["show_discount"] else ""
-    discount_total = f"<div><span>{discount_label}</span><strong>{e(money_with_symbol(totals['discount'], cur))}</strong></div>" if totals["show_discount"] else ""
+    discount_total = f"<div><span>{discount_label}</span><strong>- {e(money_with_symbol(totals['discount'], cur))}</strong></div>" if totals["show_discount"] else ""
+    if totals["show_invoice_discount"]:
+        inv_lbl = invoice_discount_label
+        if totals["invoice_discount_type"] == "pct":
+            pct_str = money(totals["invoice_discount_value"]).rstrip("0").rstrip(".")
+            inv_lbl = f"{invoice_discount_label} ({pct_str}%)"
+        invoice_discount_total = f"<div><span>{inv_lbl}</span><strong>- {e(money_with_symbol(totals['invoice_discount'], cur))}</strong></div>"
+    else:
+        invoice_discount_total = ""
     seller_name = e(seller.get("name") or "Company")
     seller_name_dir = "rtl" if has_arabic(seller.get("name")) else "auto"
     seller_name_class = "company-title arabic-title" if has_arabic(seller.get("name")) else "company-title"
@@ -369,7 +398,7 @@ footer {{ position: absolute; left: 18mm; right: 18mm; bottom: 8mm; color: #c7cb
   <table><thead><tr><th>#</th><th>{th_desc}</th><th>{th_qty}</th><th>{th_unit}</th>{discount_head}<th>{th_amount}</th></tr></thead><tbody>{"".join(rows)}</tbody></table>
   <section class="bottom">
     <div class="notes"><div class="section-title">{notes_title}</div><p dir="auto">{notes_html}</p></div>
-    <div class="totals"><div><span>{subtotal_label}</span><strong>{e(money_with_symbol(totals["subtotal"], cur))}</strong></div>{discount_total}{vat_total}<div class="grand"><span>{total_label}</span><strong>{e(money_with_symbol(totals["grand"], cur))}</strong></div></div>
+    <div class="totals"><div><span>{subtotal_label}</span><strong>{e(money_with_symbol(totals["subtotal"], cur))}</strong></div>{discount_total}{invoice_discount_total}{vat_total}<div class="grand"><span>{total_label}</span><strong>{e(money_with_symbol(totals["grand"], cur))}</strong></div></div>
   </section>
   <section class="thanks-footer">
     {f'<p class="thanks-en">{thank_en}</p>' if thank_en else ''}

@@ -4,6 +4,7 @@ node_modules/
 __pycache__/
 *.pyc
 server-test.*.log
+server-glass.*.log
 data/output/
 data/print_jobs/
 data/settings.json
@@ -13,3 +14,5 @@ data/supabase_config.json
 .vercel/
 
 .vercel
+.verify/
+.setting/

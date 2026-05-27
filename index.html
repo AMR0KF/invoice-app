@@ -24,6 +24,31 @@
   --text3:    #666;
   --radius:   6px;
   --shadow:   0 2px 8px rgba(0,0,0,.35);
+
+  /* Liquid glass system — used everywhere when backdrop-filter is supported.
+     A single source of truth: every glass surface reads these tokens, and the
+     light theme just remaps them. The "inset" carries the 1px refractive edge
+     that turns a flat blur into believable glass. */
+  --glass-tint:         rgba(28, 33, 44, 0.55);
+  --glass-tint-strong:  rgba(20, 24, 33, 0.66);
+  --glass-tint-soft:    rgba(255, 255, 255, 0.06);
+  --glass-tint-deeper:  rgba(255, 255, 255, 0.10);
+  --glass-border:       rgba(255, 255, 255, 0.10);
+  --glass-border-soft:  rgba(255, 255, 255, 0.06);
+  --glass-border-strong:rgba(255, 255, 255, 0.18);
+  --glass-inset:        inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02);
+  --glass-inset-strong: inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.04);
+  --glass-blur:         saturate(180%) blur(22px);
+  --glass-blur-soft:    saturate(160%) blur(14px);
+  --glass-blur-deep:    saturate(190%) blur(28px);
+  --glass-shadow:       0 18px 40px -18px rgba(0,0,0,.55);
+  --glass-shadow-pop:   0 28px 60px -22px rgba(0,0,0,.65);
+  --glass-accent-tint:  linear-gradient(135deg, rgba(0,160,157,.78) 0%, rgba(0,199,189,.78) 100%);
+  --glass-accent-shadow:0 10px 24px -8px rgba(0,160,157,.40);
+  --glass-mesh:
+    radial-gradient(circle at 12% 8%,  rgba(99, 102, 241, .18) 0%, transparent 40%),
+    radial-gradient(circle at 90% 18%, rgba(6, 182, 212, .14) 0%, transparent 38%),
+    radial-gradient(circle at 50% 90%, rgba(236, 72, 153, .10) 0%, transparent 45%);
 }
 
 body {
@@ -33,6 +58,12 @@ body {
   font-size: 14px;
   min-height: 100vh;
   padding: 0 0 60px;
+}
+@supports ((backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px))) {
+  body {
+    background: var(--glass-mesh), var(--bg);
+    background-attachment: fixed;
+  }
 }
 body.light-theme {
   --bg:       #eef1f5;
@@ -46,6 +77,26 @@ body.light-theme {
   --text2:    #667085;
   --text3:    #98a2b3;
   --shadow:   0 10px 28px rgba(15,23,42,.1);
+
+  /* Light-theme glass: pale tints and a brighter top-edge highlight so the
+     refraction reads on white backgrounds. */
+  --glass-tint:         rgba(255, 255, 255, 0.62);
+  --glass-tint-strong:  rgba(255, 255, 255, 0.78);
+  --glass-tint-soft:    rgba(255, 255, 255, 0.55);
+  --glass-tint-deeper:  rgba(255, 255, 255, 0.85);
+  --glass-border:       rgba(15, 23, 42, 0.08);
+  --glass-border-soft:  rgba(15, 23, 42, 0.05);
+  --glass-border-strong:rgba(15, 23, 42, 0.14);
+  --glass-inset:        inset 0 1px 0 rgba(255,255,255,.70), inset 0 0 0 1px rgba(255,255,255,.30);
+  --glass-inset-strong: inset 0 1px 0 rgba(255,255,255,.85), inset 0 0 0 1px rgba(255,255,255,.45);
+  --glass-shadow:       0 18px 36px -20px rgba(15,23,42,.18);
+  --glass-shadow-pop:   0 26px 56px -22px rgba(15,23,42,.22);
+  --glass-accent-tint:  linear-gradient(135deg, rgba(13,148,136,.92) 0%, rgba(20,184,166,.92) 100%);
+  --glass-accent-shadow:0 10px 22px -8px rgba(13,148,136,.42);
+  --glass-mesh:
+    radial-gradient(circle at 12% 8%,  rgba(99, 102, 241, .14) 0%, transparent 42%),
+    radial-gradient(circle at 90% 22%, rgba(13, 148, 136, .12) 0%, transparent 38%),
+    radial-gradient(circle at 50% 92%, rgba(236, 72, 153, .08) 0%, transparent 45%);
 }
 body.light-theme ::-webkit-scrollbar-track { background: #e8edf3; }
 body.light-theme ::-webkit-scrollbar-thumb { background: #b9c1cf; }
@@ -148,8 +199,30 @@ body.auth-locked {
   top: 0;
   z-index: 100;
 }
-.topbar-logo { font-size: 18px; font-weight: 700; color: var(--accent2); }
-.topbar-sub  { font-size: 12px; color: var(--text2); }
+.topbar-brand {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex-shrink: 1;
+  line-height: 1.15;
+  overflow: hidden;
+}
+.topbar-logo {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent2);
+  white-space: nowrap;
+  letter-spacing: -.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-sub  {
+  font-size: 12px;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .topbar-nav {
   display: inline-flex;
   align-items: center;
@@ -184,31 +257,67 @@ body.light-theme .nav-link { color: #475569; }
 body.light-theme .nav-link:hover { color: #0f172a; }
 body.light-theme .nav-link.active { color: #ffffff; box-shadow: 0 4px 12px rgba(13,148,136,.22); }
 .topbar-spacer { flex: 1; }
-.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.topbar-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .auth-pill {
+  position: relative;
   border: 1px solid var(--border);
   background: var(--surface2);
   color: var(--text);
   border-radius: 999px;
-  padding: 7px 11px;
+  padding: 7px 12px;
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   max-width: 190px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* keep as inline-block so text-overflow: ellipsis applies to the
+     text node directly; the .online status dot is absolutely positioned. */
+  display: inline-block;
+  vertical-align: middle;
 }
 .auth-pill.online {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   color: var(--accent2);
+  padding-left: 24px;
+}
+.auth-pill.online::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .auth-signout {
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--border);
+  background: var(--surface2);
   color: var(--text2);
   font: inherit;
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.auth-signout:hover {
+  color: var(--text);
+  border-color: var(--border2);
+}
+.auth-signout svg { width: 14px; height: 14px; }
+#inv-counter {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .icon-btn {
   width: 34px; height: 34px; border-radius: 8px;
@@ -396,6 +505,46 @@ body.show-discount td.discount-col { display: table-cell; }
 .total-row.grand .lbl { color: var(--text); }
 .total-row.grand .amt { color: var(--accent2); font-size: 18px; }
 
+/* Invoice-wide discount: compact inline editor on the totals row. */
+.invoice-disc-toggle {
+  font-size: 12px;
+  color: var(--text2);
+  padding: 2px 0;
+}
+.invoice-disc-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+.invoice-disc-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+.invoice-disc-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.invoice-disc-controls[hidden] { display: none; }
+.invoice-disc-controls input[type="number"] {
+  width: 88px;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  border-radius: 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-disc-controls select {
+  width: 64px;
+  padding: 4px 6px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
 .written-box {
   margin-top: 10px; padding: 9px 12px;
   background: #1a2540; border: 1px solid #2a3a6a;
@@ -477,10 +626,13 @@ body.show-discount td.discount-col { display: table-cell; }
 #auth-modal {
   align-items: center;
   padding: 24px;
+  /* Auth modal uses the same ambient mesh as the rest of the app so the
+     glass dialog above it has consistent refractive material to bend. */
   background:
-    radial-gradient(circle at 16% 18%, rgba(24,119,242,.16), transparent 34%),
-    radial-gradient(circle at 84% 12%, rgba(0,160,157,.12), transparent 30%),
-    linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%);
+    radial-gradient(circle at 16% 18%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 38%),
+    radial-gradient(circle at 84% 12%, color-mix(in srgb, var(--accent2) 22%, transparent), transparent 34%),
+    radial-gradient(circle at 50% 92%, rgba(236, 72, 153, .10), transparent 45%),
+    var(--bg);
 }
 .auth-shell {
   width: min(980px, 100%);
@@ -490,7 +642,7 @@ body.show-discount td.discount-col { display: table-cell; }
   align-items: center;
 }
 .auth-brand {
-  color: #172033;
+  color: var(--text);
 }
 .auth-logo {
   display: inline-flex;
@@ -501,13 +653,13 @@ body.show-discount td.discount-col { display: table-cell; }
 .auth-logo-mark {
   width: 52px;
   height: 52px;
-  border-radius: 12px;
+  border-radius: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #1877f2;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
   color: #fff;
-  box-shadow: 0 14px 30px rgba(24,119,242,.24);
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .auth-logo-mark svg {
   width: 29px;
@@ -517,36 +669,36 @@ body.show-discount td.discount-col { display: table-cell; }
   font-size: 32px;
   font-weight: 800;
   letter-spacing: 0;
-  color: #1877f2;
+  color: var(--accent2);
 }
 .auth-brand h1 {
   font-size: clamp(30px, 4vw, 48px);
   line-height: 1.05;
-  color: #172033;
+  color: var(--text);
   max-width: 560px;
 }
 .auth-brand p {
   max-width: 470px;
   margin-top: 16px;
-  color: #475467;
+  color: var(--text2);
   font-size: 18px;
   line-height: 1.45;
 }
 .auth-dialog {
   width: 100%;
-  background: #ffffff;
-  border: 1px solid #e4e7ec;
-  border-radius: 12px;
-  box-shadow: 0 20px 56px rgba(15,23,42,.14);
-  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 20px;
 }
 .auth-dialog h2 {
   font-size: 20px;
-  color: #172033;
+  color: var(--text);
   margin-bottom: 6px;
 }
 .auth-dialog p {
-  color: #667085;
+  color: var(--text2);
   font-size: 12px;
   line-height: 1.5;
   margin-bottom: 16px;
@@ -556,23 +708,23 @@ body.show-discount td.discount-col { display: table-cell; }
   gap: 12px;
 }
 .auth-dialog .bilabel {
-  color: #344054;
+  color: var(--text2);
   font-weight: 600;
 }
 .auth-dialog input {
-  background: #ffffff;
-  border: 1px solid #d0d5dd;
-  color: #172033;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
   min-height: 46px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 15px;
 }
 .auth-dialog input::placeholder {
-  color: #98a2b3;
+  color: var(--text3);
 }
 .auth-dialog input:focus {
-  border-color: #1877f2;
-  box-shadow: 0 0 0 3px rgba(24,119,242,.12);
+  border-color: var(--accent2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .auth-actions {
   display: grid;
@@ -581,30 +733,24 @@ body.show-discount td.discount-col { display: table-cell; }
 }
 .auth-actions .primary-btn {
   min-height: 46px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 15px;
-  background: #1877f2;
-  border-color: #1877f2;
-}
-.auth-actions .primary-btn:hover {
-  background: #166fe5;
 }
 .auth-actions .secondary-btn {
-  color: #344054;
-  background: #ffffff;
-  border-color: #d0d5dd;
+  min-height: 46px;
+  border-radius: 10px;
 }
 .auth-help {
   margin-top: 14px;
   padding-top: 14px;
-  border-top: 1px solid #eaecf0;
-  color: #667085;
+  border-top: 1px solid var(--border);
+  color: var(--text2);
   font-size: 12px;
   text-align: center;
   line-height: 1.45;
 }
 .auth-help strong {
-  color: #344054;
+  color: var(--text);
 }
 body.auth-locked #auth-cancel-btn {
   display: none;
@@ -1198,6 +1344,10 @@ body.on-settings { padding-bottom: 0 !important; }
     height: 30px;
     border-radius: 6px;
   }
+  /* Desktop already has the segmented nav pill — hide the mobile gear there. */
+  .topbar-settings-btn {
+    display: none;
+  }
   .container {
     width: min(1580px, calc(100% - 28px));
     max-width: none;
@@ -1496,20 +1646,42 @@ body.on-settings { padding-bottom: 0 !important; }
   }
   .topbar {
     padding: 10px 12px;
-    flex-wrap: wrap;
+    gap: 8px;
   }
+  /* Mobile: drop the segmented nav pill (took a whole row of vertical space).
+     Settings is reached via the gear icon on the right side of the topbar. */
   .topbar-nav {
-    order: 3;
-    width: 100%;
-    margin-left: 0;
-    overflow-x: auto;
-    padding-bottom: 1px;
+    display: none;
   }
-  .nav-link {
-    white-space: nowrap;
+  /* Tighter brand on mobile — drop the Arabic subtitle so the header reads
+     as a single clean line. Logo stays one line, never wraps. */
+  .topbar-logo {
+    font-size: 16px;
+  }
+  .topbar-sub {
+    display: none;
   }
   .topbar-actions {
     margin-left: auto;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  /* Truncate aggressively on mobile so the signed-in email/name shows a green
+     status dot + a tight ellipsis, never a 2-line wrap. */
+  .auth-pill {
+    max-width: 120px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .auth-signout {
+    padding: 6px 8px;
+  }
+  #inv-counter {
+    font-size: 10px;
+    color: var(--text3);
+  }
+  body.on-settings .topbar-settings-btn {
+    color: var(--accent2);
   }
   .container {
     padding: 10px 10px 0;
@@ -1690,137 +1862,234 @@ body.on-settings { padding-bottom: 0 !important; }
     order: -1;
   }
 
-  /* ── Liquid glass (mobile only) ───────────────────────────────────────── */
-  @supports ((backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px))) {
-    body {
-      background:
-        radial-gradient(circle at 12% 8%, rgba(99, 102, 241, .18) 0%, transparent 40%),
-        radial-gradient(circle at 90% 18%, rgba(6, 182, 212, .14) 0%, transparent 38%),
-        radial-gradient(circle at 50% 90%, rgba(236, 72, 153, .10) 0%, transparent 45%),
-        var(--bg);
-      background-attachment: fixed;
-    }
-    body.light-theme {
-      background:
-        radial-gradient(circle at 12% 8%, rgba(99, 102, 241, .14) 0%, transparent 42%),
-        radial-gradient(circle at 90% 22%, rgba(13, 148, 136, .12) 0%, transparent 38%),
-        radial-gradient(circle at 50% 92%, rgba(236, 72, 153, .08) 0%, transparent 45%),
-        var(--bg);
-      background-attachment: fixed;
-    }
-    .topbar {
-      background: rgba(20, 24, 33, 0.58);
-      -webkit-backdrop-filter: saturate(180%) blur(22px);
-      backdrop-filter: saturate(180%) blur(22px);
-      border-bottom: 1px solid rgba(255,255,255,.08);
-      box-shadow: 0 1px 24px rgba(0,0,0,.22);
-    }
-    body.light-theme .topbar {
-      background: rgba(255,255,255,.55);
-      border-bottom: 1px solid rgba(15,23,42,.08);
-      box-shadow: 0 1px 24px rgba(15,23,42,.06);
-    }
-    .mobile-action-bar {
-      background: rgba(20, 24, 33, 0.55) !important;
-      -webkit-backdrop-filter: saturate(180%) blur(26px);
-      backdrop-filter: saturate(180%) blur(26px);
-      border-top: 1px solid rgba(255,255,255,.10);
-      box-shadow: 0 -8px 26px rgba(0,0,0,.30);
-    }
-    body.light-theme .mobile-action-bar {
-      background: rgba(255,255,255,.62) !important;
-      border-top: 1px solid rgba(15,23,42,.08);
-      box-shadow: 0 -8px 24px rgba(15,23,42,.10);
-    }
-    .mobile-action-btn,
-    .gen-btn,
-    .add-row-btn,
-    .primary-btn,
-    .secondary-btn,
-    .danger-btn,
-    .ghost-btn,
-    .auth-pill,
-    .topbar-nav,
-    .nav-link {
-      -webkit-backdrop-filter: saturate(160%) blur(14px);
-      backdrop-filter: saturate(160%) blur(14px);
-    }
-    .mobile-action-btn {
-      background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.14);
-    }
-    .mobile-action-btn.primary {
-      background: linear-gradient(135deg, rgba(0,160,157,.78) 0%, rgba(0,199,189,.78) 100%);
-      border-color: rgba(255,255,255,.20);
-      box-shadow: 0 6px 18px rgba(0,160,157,.30), 0 1px 0 rgba(255,255,255,.10) inset;
-    }
-    .gen-btn {
-      background: linear-gradient(135deg, rgba(0,160,157,.72) 0%, rgba(0,199,189,.72) 100%);
-      box-shadow: 0 6px 18px rgba(0,160,157,.28), 0 1px 0 rgba(255,255,255,.10) inset;
-    }
-    .primary-btn {
-      background: linear-gradient(135deg, rgba(0,160,157,.72) 0%, rgba(0,199,189,.72) 100%);
-      border-color: rgba(255,255,255,.18);
-      box-shadow: 0 4px 14px rgba(0,160,157,.24), 0 1px 0 rgba(255,255,255,.10) inset;
-    }
-    .secondary-btn,
-    .ghost-btn,
-    .add-row-btn,
-    .auth-pill {
-      background: rgba(255,255,255,.06);
-      border-color: rgba(255,255,255,.12);
-    }
-    .danger-btn {
-      background: rgba(248,113,113,.12);
-      border-color: rgba(248,113,113,.30);
-    }
-    .topbar-nav {
-      background: rgba(255,255,255,.06);
-      border-color: rgba(255,255,255,.10);
-    }
-    .nav-link.active {
-      background: linear-gradient(135deg, rgba(0,160,157,.82) 0%, rgba(0,199,189,.82) 100%);
-      box-shadow: 0 4px 12px rgba(0,160,157,.30), 0 1px 0 rgba(255,255,255,.10) inset;
-    }
-    body.light-theme .mobile-action-btn,
-    body.light-theme .secondary-btn,
-    body.light-theme .ghost-btn,
-    body.light-theme .add-row-btn,
-    body.light-theme .auth-pill,
-    body.light-theme .topbar-nav {
-      background: rgba(255,255,255,.55);
-      border-color: rgba(15,23,42,.08);
-    }
-    body.light-theme .danger-btn {
-      background: rgba(220,38,38,.10);
-      border-color: rgba(220,38,38,.28);
-    }
-    .card,
-    .settings-card,
-    .company-card,
-    .settings-company-editor {
-      background: rgba(28, 33, 44, 0.55);
-      -webkit-backdrop-filter: saturate(170%) blur(18px);
-      backdrop-filter: saturate(170%) blur(18px);
-      border-color: rgba(255,255,255,.08);
-    }
-    body.light-theme .card,
-    body.light-theme .settings-card,
-    body.light-theme .company-card,
-    body.light-theme .settings-company-editor {
-      background: rgba(255,255,255,.68);
-      border-color: rgba(15,23,42,.08);
-    }
-    .settings-card-head {
-      background: linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 100%);
-    }
-    body.light-theme .settings-card-head {
-      background: linear-gradient(180deg, rgba(15,23,42,.04) 0%, rgba(255,255,255,0) 100%);
-    }
-    .toast {
-      -webkit-backdrop-filter: saturate(180%) blur(18px);
-      backdrop-filter: saturate(180%) blur(18px);
-    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   LIQUID GLASS — universal layer (desktop + mobile)
+   Applied via @supports so non-supporting browsers keep the solid styles.
+   Every glass surface follows the same recipe:
+     1. translucent tint  (var(--glass-tint*))
+     2. backdrop-filter   (var(--glass-blur*))
+     3. 1px translucent border (var(--glass-border*))
+     4. inset top-edge highlight (var(--glass-inset*))  ← the refraction edge
+     5. tinted outer shadow toward the surface hue
+   Light-theme remaps the tokens; rules below remain theme-agnostic.
+   ───────────────────────────────────────────────────────────────────────── */
+@supports ((backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px))) {
+
+  /* ── Chrome: topbar + segmented nav ───────────────────────────────── */
+  .topbar {
+    background: var(--glass-tint);
+    -webkit-backdrop-filter: var(--glass-blur);
+            backdrop-filter: var(--glass-blur);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: 0 1px 24px rgba(0,0,0,.22), var(--glass-inset);
+  }
+  body.light-theme .topbar {
+    box-shadow: 0 1px 24px rgba(15,23,42,.06), var(--glass-inset);
+  }
+  .topbar-nav,
+  body.light-theme .topbar-nav {
+    background: var(--glass-tint-soft);
+    border-color: var(--glass-border);
+    -webkit-backdrop-filter: var(--glass-blur-soft);
+            backdrop-filter: var(--glass-blur-soft);
+    box-shadow: var(--glass-inset);
+  }
+  .nav-link.active,
+  body.light-theme .nav-link.active {
+    background: var(--glass-accent-tint);
+    color: #fff;
+    box-shadow: var(--glass-accent-shadow), var(--glass-inset-strong);
+  }
+  .auth-pill,
+  .auth-signout,
+  .icon-btn {
+    background: var(--glass-tint-soft);
+    border: 1px solid var(--glass-border);
+    -webkit-backdrop-filter: var(--glass-blur-soft);
+            backdrop-filter: var(--glass-blur-soft);
+    box-shadow: var(--glass-inset);
+  }
+  .auth-signout { border: 0; box-shadow: none; background: transparent; }
+  .icon-btn:hover,
+  body.light-theme .icon-btn:hover {
+    background: var(--glass-tint-deeper);
+    border-color: var(--glass-border-strong);
+    color: var(--text);
+  }
+  .auth-pill.online {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--glass-border));
+  }
+
+  /* ── Content surfaces: cards, settings panels, editors ────────────── */
+  .card,
+  .settings-card,
+  .settings-company-editor,
+  .company-card,
+  .pdf-preview-dialog,
+  .mobile-design-field,
+  body.light-theme .card,
+  body.light-theme .settings-card,
+  body.light-theme .settings-company-editor,
+  body.light-theme .company-card,
+  body.light-theme .pdf-preview-dialog,
+  body.light-theme .mobile-design-field {
+    background: var(--glass-tint);
+    border-color: var(--glass-border);
+    -webkit-backdrop-filter: var(--glass-blur);
+            backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+  }
+  .company-card:hover {
+    background: var(--glass-tint-strong);
+    border-color: var(--glass-border-strong);
+  }
+  .company-card.selected {
+    background: var(--glass-tint-strong);
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent),
+      var(--glass-shadow),
+      var(--glass-inset);
+  }
+  .settings-card-head {
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--glass-tint-deeper) 60%, transparent) 0%,
+      transparent 100%);
+    border-bottom-color: var(--glass-border);
+  }
+  .settings-row,
+  .action-summary > div,
+  .settings-empty-state,
+  .company-search-wrap input,
+  .written-box {
+    background: var(--glass-tint-soft);
+    border-color: var(--glass-border);
+    -webkit-backdrop-filter: var(--glass-blur-soft);
+            backdrop-filter: var(--glass-blur-soft);
+  }
+  .settings-empty-state { border-style: dashed; border-color: var(--glass-border-strong); }
+
+  /* ── Inputs (subtle frosted fill) ─────────────────────────────────── */
+  input,
+  select,
+  textarea {
+    background: var(--glass-tint-soft);
+    border-color: var(--glass-border);
+    -webkit-backdrop-filter: var(--glass-blur-soft);
+            backdrop-filter: var(--glass-blur-soft);
+  }
+  input:focus,
+  select:focus,
+  textarea:focus,
+  .company-search-wrap input:focus {
+    background: var(--glass-tint-deeper);
+    border-color: var(--accent2);
+  }
+
+  /* ── Buttons ──────────────────────────────────────────────────────── */
+  .primary-btn,
+  .gen-btn,
+  .mobile-action-btn.primary {
+    background: var(--glass-accent-tint);
+    border: 1px solid var(--glass-border-strong);
+    color: #fff;
+    -webkit-backdrop-filter: var(--glass-blur-soft);
+            backdrop-filter: var(--glass-blur-soft);
+    box-shadow: var(--glass-accent-shadow), var(--glass-inset-strong);
+  }
+  .primary-btn:hover,
+  .gen-btn:hover,
+  .mobile-action-btn.primary:hover {
+    background: var(--glass-accent-tint);
+    filter: brightness(1.08);
+  }
+  .secondary-btn,
+  .ghost-btn,
+  .add-row-btn,
+  .auth-pill,
+  .combo-btn,
+  .settings-back,
+  .mobile-action-btn {
+    background: var(--glass-tint-soft);
+    border: 1px solid var(--glass-border);
+    -webkit-backdrop-filter: var(--glass-blur-soft);
+            backdrop-filter: var(--glass-blur-soft);
+    box-shadow: var(--glass-inset);
+  }
+  .secondary-btn:hover,
+  .ghost-btn:hover,
+  .add-row-btn:hover,
+  .settings-back:hover,
+  .mobile-action-btn:hover,
+  .combo-btn:hover {
+    background: var(--glass-tint-deeper);
+    border-color: var(--glass-border-strong);
+  }
+  .danger-btn,
+  body.light-theme .danger-btn {
+    background: color-mix(in srgb, var(--danger) 14%, var(--glass-tint-soft));
+    border: 1px solid color-mix(in srgb, var(--danger) 32%, var(--glass-border));
+    color: #fca5a5;
+    -webkit-backdrop-filter: var(--glass-blur-soft);
+            backdrop-filter: var(--glass-blur-soft);
+    box-shadow: var(--glass-inset);
+  }
+  body.light-theme .danger-btn { color: #b42318; }
+  .danger-btn:hover {
+    background: color-mix(in srgb, var(--danger) 22%, var(--glass-tint-soft));
+  }
+
+  /* ── Floating layers: modals, dropdowns, toasts, mobile bar ───────── */
+  .modal-backdrop {
+    background: rgba(8, 10, 18, .55);
+    -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+  }
+  body.light-theme .modal-backdrop {
+    background: rgba(15, 23, 42, .35);
+  }
+  .auth-dialog,
+  .pdf-preview-dialog {
+    background: var(--glass-tint-strong);
+    border: 1px solid var(--glass-border-strong);
+    -webkit-backdrop-filter: var(--glass-blur-deep);
+            backdrop-filter: var(--glass-blur-deep);
+    box-shadow: var(--glass-shadow-pop), var(--glass-inset-strong);
+  }
+  .auth-dialog input {
+    background: var(--glass-tint-deeper);
+    border-color: var(--glass-border-strong);
+  }
+  .dropdown-list {
+    background: var(--glass-tint-strong);
+    border-color: var(--glass-border-strong);
+    -webkit-backdrop-filter: var(--glass-blur);
+            backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow-pop), var(--glass-inset);
+  }
+  .dropdown-item:hover {
+    background: var(--glass-tint-deeper);
+  }
+  .toast,
+  body.light-theme .toast {
+    background: var(--glass-tint-strong);
+    border-color: var(--glass-border-strong);
+    color: var(--text);
+    -webkit-backdrop-filter: var(--glass-blur);
+            backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+  }
+  .mobile-action-bar {
+    background: var(--glass-tint-strong) !important;
+    -webkit-backdrop-filter: var(--glass-blur-deep);
+            backdrop-filter: var(--glass-blur-deep);
+    border-top: 1px solid var(--glass-border);
+    box-shadow: 0 -10px 28px rgba(0,0,0,.30), var(--glass-inset);
+  }
+  body.light-theme .mobile-action-bar {
+    box-shadow: 0 -10px 24px rgba(15,23,42,.10), var(--glass-inset);
   }
 }
 </style>
@@ -1829,7 +2098,7 @@ body.on-settings { padding-bottom: 0 !important; }
 
 <!-- Top bar -->
 <div class="topbar">
-  <div>
+  <div class="topbar-brand">
     <div class="topbar-logo">Invoice Maker</div>
     <div class="topbar-sub">صانع الفواتير</div>
   </div>
@@ -1840,7 +2109,19 @@ body.on-settings { padding-bottom: 0 !important; }
   <div class="topbar-spacer"></div>
   <div class="topbar-actions">
     <button class="auth-pill" id="supabase-auth-btn" type="button" onclick="openAuthModal()">Local data</button>
-    <button class="auth-signout" id="supabase-signout-btn" type="button" onclick="signOutSupabase()" style="display:none">Sign out</button>
+    <button class="auth-signout" id="supabase-signout-btn" type="button" onclick="signOutSupabase()" aria-label="Sign out" title="Sign out" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+        <polyline points="16 17 21 12 16 7"></polyline>
+        <line x1="21" y1="12" x2="9" y2="12"></line>
+      </svg>
+    </button>
+    <button class="icon-btn topbar-settings-btn" id="topbar-settings-btn" type="button" onclick="toggleSettingsRoute()" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path>
+      </svg>
+    </button>
     <div style="font-size:11px;color:var(--text3);" id="inv-counter">INV-001</div>
   </div>
 </div>
@@ -2034,8 +2315,27 @@ body.on-settings { padding-bottom: 0 !important; }
     <div class="totals">
       <div class="total-row"><span class="lbl">Subtotal / مجموع فرعي</span><span class="amt" id="t-sub">USD 0.00</span></div>
       <div class="total-row" id="disc-row" style="display:none">
-        <span class="lbl" style="color:#86efac">Discount / خصم</span>
+        <span class="lbl" style="color:#86efac">Line discount / خصم البنود</span>
         <span class="amt" style="color:#86efac" id="t-disc">- USD 0.00</span>
+      </div>
+      <!-- Invoice-wide discount: applied AFTER line discounts, BEFORE VAT.
+           Toggle expands inline controls; row hides when off. -->
+      <div class="total-row invoice-disc-toggle">
+        <label class="invoice-disc-label">
+          <input type="checkbox" id="chk-invoice-disc" onchange="toggleInvoiceDiscount()">
+          <span>Invoice discount / خصم الفاتورة</span>
+        </label>
+        <div class="invoice-disc-controls" id="invoice-disc-controls" hidden>
+          <input type="number" id="invoice-disc-value" value="0" min="0" step="0.01" inputmode="decimal" oninput="recalc()">
+          <select id="invoice-disc-type" onchange="recalc()">
+            <option value="pct">%</option>
+            <option value="fixed">flat</option>
+          </select>
+        </div>
+      </div>
+      <div class="total-row" id="invoice-disc-row" style="display:none">
+        <span class="lbl" style="color:#86efac" id="t-invoice-disc-lbl">Invoice discount / خصم الفاتورة</span>
+        <span class="amt" style="color:#86efac" id="t-invoice-disc">- USD 0.00</span>
       </div>
       <div class="total-row" id="vat-row" style="display:none">
         <span class="lbl" id="t-vat-lbl">VAT (0%) / ضريبة</span>
@@ -2564,6 +2864,12 @@ function openSettings(section = '') {
   if (location.hash === target) routeView(); else location.hash = target;
 }
 
+// Mobile gear icon: toggles between settings and invoice views.
+function toggleSettingsRoute() {
+  if (location.hash.startsWith('#/settings')) goToInvoice();
+  else openSettings();
+}
+
 function closeSettings() {
   if (!document.getElementById('view-settings').hidden) goToInvoice();
 }
@@ -2892,17 +3198,21 @@ function updateAuthUi() {
   btn.classList.toggle('online', supabaseActive());
   if (supabaseActive()) {
     document.body.classList.remove('auth-locked');
-    btn.textContent = `Signed in: ${authDisplayName()}`;
-    signout.style.display = 'inline';
+    // The .online green dot already signals "signed in" — show just the name.
+    btn.textContent = authDisplayName();
+    btn.title = `Signed in: ${authDisplayName()}`;
+    signout.style.display = 'inline-flex';
     closeAuthModal(true);
   } else if (supabaseConfigured) {
     document.body.classList.add('auth-locked');
     btn.textContent = 'Sign in';
+    btn.title = 'Sign in';
     signout.style.display = 'none';
     openAuthModal(true);
   } else {
     document.body.classList.remove('auth-locked');
     btn.textContent = 'Local data';
+    btn.title = 'Using local data — sign in to sync';
     signout.style.display = 'none';
   }
 }
@@ -3500,6 +3810,27 @@ function setMoneyCell(el, cur, amount) {
   el.innerHTML = `<span class="money-symbol">${currencyMark(cur)}</span><span class="money-value">${fmtNum(amount)}</span>`;
 }
 
+// Read the invoice-wide discount widget state. Returns { enabled, type, value, amount }
+// where `amount` is the realized discount in currency units, clamped to baseAfterLines.
+function readInvoiceDiscount(baseAfterLines) {
+  const enabled = document.getElementById('chk-invoice-disc')?.checked === true;
+  if (!enabled) return { enabled: false, type: 'pct', value: 0, amount: 0 };
+  const type  = document.getElementById('invoice-disc-type')?.value === 'fixed' ? 'fixed' : 'pct';
+  const value = Math.max(0, parseFloat(document.getElementById('invoice-disc-value')?.value) || 0);
+  let amount  = type === 'fixed' ? value : baseAfterLines * (value / 100);
+  // Never let the invoice discount push the total below zero.
+  if (amount > baseAfterLines) amount = baseAfterLines;
+  return { enabled: true, type, value, amount };
+}
+
+function toggleInvoiceDiscount() {
+  const on = document.getElementById('chk-invoice-disc').checked;
+  const ctrls = document.getElementById('invoice-disc-controls');
+  if (on) ctrls.removeAttribute('hidden');
+  else    ctrls.setAttribute('hidden', '');
+  recalc();
+}
+
 function recalc() {
   const cur     = document.getElementById('currency').value;
   const vatPct  = parseFloat(document.getElementById('vat-pct').value) || 0;
@@ -3520,9 +3851,11 @@ function recalc() {
     setMoneyCell(document.getElementById('lt-'+id), cur, net);
   });
 
-  const netSub = sub - totalDisc;
-  const vatAmt = netSub * (vatPct/100);
-  const grand  = netSub + vatAmt;
+  const baseAfterLines = sub - totalDisc;
+  const invDisc        = readInvoiceDiscount(baseAfterLines);
+  const taxableBase    = baseAfterLines - invDisc.amount;
+  const vatAmt         = taxableBase * (vatPct/100);
+  const grand          = taxableBase + vatAmt;
 
   document.getElementById('t-sub').textContent   = cur + ' ' + fmtNum(sub);
 
@@ -3531,6 +3864,14 @@ function recalc() {
     discRow.style.display = 'flex';
     document.getElementById('t-disc').textContent = '- ' + cur + ' ' + fmtNum(totalDisc);
   } else { discRow.style.display = 'none'; }
+
+  const invDiscRow = document.getElementById('invoice-disc-row');
+  if (invDisc.enabled && invDisc.amount > 0) {
+    invDiscRow.style.display = 'flex';
+    const suffix = invDisc.type === 'pct' ? ` (${invDisc.value}%)` : '';
+    document.getElementById('t-invoice-disc-lbl').textContent = `Invoice discount${suffix} / خصم الفاتورة`;
+    document.getElementById('t-invoice-disc').textContent     = '- ' + cur + ' ' + fmtNum(invDisc.amount);
+  } else { invDiscRow.style.display = 'none'; }
 
   const vatRow = document.getElementById('vat-row');
   if (vatPct > 0) {
@@ -3562,6 +3903,9 @@ function collectData() {
   });
 
   const hasDue = document.getElementById('chk-due').checked;
+  const invDiscEnabled = document.getElementById('chk-invoice-disc')?.checked === true;
+  const invDiscType    = document.getElementById('invoice-disc-type')?.value === 'fixed' ? 'fixed' : 'pct';
+  const invDiscValue   = Math.max(0, parseFloat(document.getElementById('invoice-disc-value')?.value) || 0);
 
   return {
     invoice_number: document.getElementById('inv-num').value.trim() || 'INV-001',
@@ -3570,6 +3914,9 @@ function collectData() {
     currency:       document.getElementById('currency').value,
     vat_pct:        parseFloat(document.getElementById('vat-pct').value) || 0,
     include_discount: includeDiscount,
+    invoice_discount: invDiscEnabled
+      ? { enabled: true, type: invDiscType, value: invDiscValue }
+      : { enabled: false, type: 'pct', value: 0 },
     template:       document.getElementById('invoice-template').value,
     language:       document.getElementById('doc-lang').value,
     seller: {

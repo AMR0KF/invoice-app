@@ -48,7 +48,7 @@ function amountWords(amount, cur) {
   return { en: enW, ar: arW + " \u0641\u0642\u0637" };
 }
 
-function calcTotals(items, vatPct, includeDiscount = true) {
+function calcTotals(items, vatPct, includeDiscount = true, invoiceDiscount = null) {
   let subtotal = 0;
   let totalDisc = 0;
   const rows = items.map((it) => {
@@ -63,9 +63,26 @@ function calcTotals(items, vatPct, includeDiscount = true) {
     return { ...it, qty, unit_price: unitPrice, discount_pct: discountPct, gross, discAmt, net };
   });
   const netSub = subtotal - totalDisc;
-  const vatAmt = netSub * ((Number(vatPct) || 0) / 100);
-  const grand = netSub + vatAmt;
-  return { rows, subtotal, totalDisc, netSub, vatAmt, grand };
+
+  // Invoice-wide discount, applied between line discounts and VAT.
+  const invDiscEnabled = !!(invoiceDiscount && invoiceDiscount.enabled);
+  const invDiscType = (invoiceDiscount && invoiceDiscount.type === "fixed") ? "fixed" : "pct";
+  const invDiscValue = Math.max(0, Number(invoiceDiscount && invoiceDiscount.value) || 0);
+  let invDiscAmt = 0;
+  if (invDiscEnabled) {
+    invDiscAmt = invDiscType === "fixed" ? invDiscValue : netSub * (invDiscValue / 100);
+    if (invDiscAmt > netSub) invDiscAmt = netSub;
+  }
+  const taxableBase = netSub - invDiscAmt;
+  const vatAmt = taxableBase * ((Number(vatPct) || 0) / 100);
+  const grand = taxableBase + vatAmt;
+  return {
+    rows, subtotal, totalDisc, netSub,
+    invoiceDiscount: {
+      enabled: invDiscEnabled, type: invDiscType, value: invDiscValue, amount: invDiscAmt,
+    },
+    taxableBase, vatAmt, grand,
+  };
 }
 
 const fmt = (n) => Number(n || 0).toLocaleString("en-US", {
@@ -171,7 +188,7 @@ function renderLegacyTemplate(data, template) {
   const curSymbol = cur === "USD" ? "$" : cur;
   const seller = data.seller || {};
   const buyer = data.buyer || {};
-  const totals = calcTotals(data.items || [], data.vat_pct || 0, data.include_discount !== false);
+  const totals = calcTotals(data.items || [], data.vat_pct || 0, data.include_discount !== false, data.invoice_discount);
   const invoiceNo = esc(data.invoice_number || "INV-001");
   const date = esc(data.date || "");
   const due = data.due_date || "";
@@ -184,17 +201,27 @@ function renderLegacyTemplate(data, template) {
   const thAmount = biLabel(lang, "AMOUNT", "\u0627\u0644\u0645\u062c\u0645\u0648\u0639");
   const thDisc = biLabel(lang, "DISC.", "\u062e\u0635\u0645");
   const subtotalLabel = biLabel(lang, "Subtotal", "\u0627\u0644\u0645\u062c\u0645\u0648\u0639 \u0627\u0644\u0641\u0631\u0639\u064a");
-  const discountLabel = biLabel(lang, "Discount", "\u0627\u0644\u062e\u0635\u0645");
+  const discountLabel = biLabel(lang, "Line discount", "\u062e\u0635\u0645 \u0627\u0644\u0628\u0646\u0648\u062f");
+  const invoiceDiscountLabel = biLabel(lang, "Invoice discount", "\u062e\u0635\u0645 \u0627\u0644\u0641\u0627\u062a\u0648\u0631\u0629");
   const totalLabel = biLabel(lang, "Total", "\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a");
   const notesTitle = biLabel(lang, "NOTES", "\u0645\u0644\u0627\u062d\u0638\u0627\u062a");
   const showDiscount = totals.totalDisc > 0;
+  const showInvoiceDiscount = totals.invoiceDiscount.enabled && totals.invoiceDiscount.amount > 0;
   const sellerName = seller.name || "Company";
   const sellerNameClass = hasArabic(sellerName) ? "company-title arabic-title" : "company-title";
   const sellerNameDir = hasArabic(sellerName) ? "rtl" : "auto";
   const dueCard = due ? `<section><small>${esc(biLabel(lang, "DUE DATE", "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0627\u0633\u062a\u062d\u0642\u0627\u0642"))}</small><strong>${esc(due)}</strong></section>` : "";
   const metaBlock = dueCard ? `<div class="meta">${dueCard}</div>` : "";
   const discountHead = showDiscount ? `<th>${esc(thDisc)}</th>` : "";
-  const discountTotal = showDiscount ? `<div><span>${esc(discountLabel)}</span><strong>${esc(moneyWithCurrency(totals.totalDisc, cur))}</strong></div>` : "";
+  const discountTotal = showDiscount ? `<div><span>${esc(discountLabel)}</span><strong>- ${esc(moneyWithCurrency(totals.totalDisc, cur))}</strong></div>` : "";
+  const invoiceDiscountTotal = showInvoiceDiscount
+    ? (() => {
+        const pctSuffix = totals.invoiceDiscount.type === "pct"
+          ? ` (${moneyCompact(totals.invoiceDiscount.value)}%)`
+          : "";
+        return `<div><span>${esc(invoiceDiscountLabel + pctSuffix)}</span><strong>- ${esc(moneyWithCurrency(totals.invoiceDiscount.amount, cur))}</strong></div>`;
+      })()
+    : "";
   const vatPct = Number(data.vat_pct) || 0;
   const vatTotal = vatPct > 0 ? `<div><span>VAT (${moneyCompact(vatPct)}%)</span><strong>${esc(moneyWithCurrency(totals.vatAmt, cur))}</strong></div>` : "";
   const thankEn = lang === "en" || lang === "bi" ? "Thank you for your business!" : "";
@@ -375,7 +402,7 @@ footer { position: absolute; left: 18mm; right: 18mm; bottom: 8mm; color: #c7cbd
   <table><thead><tr><th>#</th><th>${esc(thDesc)}</th><th>${esc(thQty)}</th><th>${esc(thUnit)}</th>${discountHead}<th>${esc(thAmount)}</th></tr></thead><tbody>${rows}</tbody></table>
   <section class="bottom">
     <div class="notes"><div class="section-title">${esc(notesTitle)}</div><p dir="auto">${notesHtml}</p></div>
-    <div class="totals"><div><span>${esc(subtotalLabel)}</span><strong>${esc(moneyWithCurrency(totals.subtotal, cur))}</strong></div>${discountTotal}${vatTotal}<div class="grand"><span>${esc(totalLabel)}</span><strong>${esc(moneyWithCurrency(totals.grand, cur))}</strong></div></div>
+    <div class="totals"><div><span>${esc(subtotalLabel)}</span><strong>${esc(moneyWithCurrency(totals.subtotal, cur))}</strong></div>${discountTotal}${invoiceDiscountTotal}${vatTotal}<div class="grand"><span>${esc(totalLabel)}</span><strong>${esc(moneyWithCurrency(totals.grand, cur))}</strong></div></div>
   </section>
   <section class="thanks-footer">
     ${thankEn ? `<p class="thanks-en">${esc(thankEn)}</p>` : ""}
@@ -393,11 +420,12 @@ function renderAuroraV2(data) {
   const curSymbol = cur === "USD" ? "$" : cur;
   const seller = data.seller || {};
   const buyer = data.buyer || {};
-  const totals = calcTotals(data.items || [], data.vat_pct || 0, data.include_discount !== false);
+  const totals = calcTotals(data.items || [], data.vat_pct || 0, data.include_discount !== false, data.invoice_discount);
   const invoiceNo = esc(data.invoice_number || "INV-001");
   const date = esc(data.date || "");
   const due = data.due_date || "";
   const showDiscount = totals.totalDisc > 0;
+  const showInvoiceDiscount = totals.invoiceDiscount.enabled && totals.invoiceDiscount.amount > 0;
   const vatPct = Number(data.vat_pct) || 0;
 
   const sellerName = seller.name || "Company";
@@ -410,7 +438,8 @@ function renderAuroraV2(data) {
   const issuedLabel = biLabel(lang, "Issued", "تاريخ الإصدار");
   const dueLabel = biLabel(lang, "Due", "تاريخ الاستحقاق");
   const subtotalLabel = biLabel(lang, "Subtotal", "المجموع الفرعي");
-  const discountLabel = biLabel(lang, "Discount", "الخصم");
+  const discountLabel = biLabel(lang, "Line discount", "خصم البنود");
+  const invoiceDiscountLabel = biLabel(lang, "Invoice discount", "خصم الفاتورة");
   const totalLabel = biLabel(lang, "Total due", "الإجمالي");
   const notesTitle = biLabel(lang, "Notes", "ملاحظات");
   const thDesc = biLabel(lang, "Description", "الوصف");
@@ -445,6 +474,14 @@ function renderAuroraV2(data) {
 
   const discountTotal = showDiscount
     ? `<div class="total-row"><span>${esc(discountLabel)}</span><strong>− ${esc(curSymbol)} ${fmt(totals.totalDisc)}</strong></div>`
+    : "";
+  const invoiceDiscountTotal = showInvoiceDiscount
+    ? (() => {
+        const pctSuffix = totals.invoiceDiscount.type === "pct"
+          ? ` ${moneyCompact(totals.invoiceDiscount.value)}%`
+          : "";
+        return `<div class="total-row"><span>${esc(invoiceDiscountLabel + pctSuffix)}</span><strong>− ${esc(curSymbol)} ${fmt(totals.invoiceDiscount.amount)}</strong></div>`;
+      })()
     : "";
   const vatTotal = vatPct > 0
     ? `<div class="total-row"><span>VAT ${moneyCompact(vatPct)}%</span><strong>${esc(curSymbol)} ${fmt(totals.vatAmt)}</strong></div>`
@@ -651,6 +688,7 @@ body {
     <div class="totals">
       <div class="total-row"><span>${esc(subtotalLabel)}</span><strong>${esc(curSymbol)} ${fmt(totals.subtotal)}</strong></div>
       ${discountTotal}
+      ${invoiceDiscountTotal}
       ${vatTotal}
       <div class="grand"><span class="grand-label">${esc(totalLabel)}</span><span class="grand-value">${esc(curSymbol)} ${fmt(totals.grand)}</span></div>
     </div>
@@ -714,9 +752,10 @@ function renderTemplate(data) {
   const cur = data.currency === "LBP" ? "LBP" : "USD";
   const seller = data.seller || {};
   const buyer = data.buyer || {};
-  const totals = calcTotals(data.items || [], data.vat_pct || 0, data.include_discount !== false);
+  const totals = calcTotals(data.items || [], data.vat_pct || 0, data.include_discount !== false, data.invoice_discount);
   const words = amountWords(totals.grand, cur);
   const showDiscount = totals.totalDisc > 0;
+  const showInvoiceDiscount = totals.invoiceDiscount.enabled && totals.invoiceDiscount.amount > 0;
   const vatPct = Number(data.vat_pct) || 0;
   const notes = (data.notes || "").trim() || "\u2014";
   const invoiceWord = lang === "ar" ? "\u0641\u0627\u062a\u0648\u0631\u0629" : (lang === "bi" ? "INVOICE / \u0641\u0627\u062a\u0648\u0631\u0629" : "INVOICE");
@@ -739,7 +778,16 @@ function renderTemplate(data) {
     ? `<div class="party party-from">${partyBlock(biLabel(lang, "FROM", "\u0645\u0646"), seller)}</div>`
     : "";
   const discountTotalHtml = showDiscount
-    ? `<div class="total-row discount"><span>${esc(biLabel(lang, "Discount", "\u0627\u0644\u062e\u0635\u0645"))}</span><strong>- ${cur} ${fmt(totals.totalDisc)}</strong></div>`
+    ? `<div class="total-row discount"><span>${esc(biLabel(lang, "Line discount", "\u062e\u0635\u0645 \u0627\u0644\u0628\u0646\u0648\u062f"))}</span><strong>- ${cur} ${fmt(totals.totalDisc)}</strong></div>`
+    : "";
+  const invoiceDiscountTotalHtml = showInvoiceDiscount
+    ? (() => {
+        const pctSuffix = totals.invoiceDiscount.type === "pct"
+          ? ` (${fmt(totals.invoiceDiscount.value).replace(/\.00$/, "")}%)`
+          : "";
+        const lbl = biLabel(lang, `Invoice discount${pctSuffix}`, `\u062e\u0635\u0645 \u0627\u0644\u0641\u0627\u062a\u0648\u0631\u0629${pctSuffix}`);
+        return `<div class="total-row discount"><span>${esc(lbl)}</span><strong>- ${cur} ${fmt(totals.invoiceDiscount.amount)}</strong></div>`;
+      })()
     : "";
   const vatTotalHtml = vatPct > 0
     ? `<div class="total-row"><span>${esc(biLabel(lang, `VAT (${fmt(vatPct).replace(/\.00$/, "")}%)`, `\u0636\u0631\u064a\u0628\u0629 (${fmt(vatPct).replace(/\.00$/, "")}%)`))}</span><strong>${cur} ${fmt(totals.vatAmt)}</strong></div>`
@@ -774,6 +822,7 @@ function renderTemplate(data) {
     SUBTOTAL_LABEL: esc(biLabel(lang, "Subtotal", "\u0627\u0644\u0645\u062c\u0645\u0648\u0639 \u0627\u0644\u0641\u0631\u0639\u064a")),
     SUBTOTAL: `${cur} ${fmt(totals.subtotal)}`,
     DISCOUNT_TOTAL_HTML: discountTotalHtml,
+    INVOICE_DISCOUNT_TOTAL_HTML: invoiceDiscountTotalHtml,
     VAT_TOTAL_HTML: vatTotalHtml,
     TOTAL_LABEL: esc(biLabel(lang, "Total", "\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a")),
     GRAND_TOTAL: `${cur} ${fmt(totals.grand)}`,

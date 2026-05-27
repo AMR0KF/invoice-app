@@ -150,7 +150,7 @@ function amountWords(amount, cur) {
 }
 
 // ── CALC TOTALS ────────────────────────────────────────────────────────────
-function calcTotals(items, vatPct) {
+function calcTotals(items, vatPct, invoiceDiscount) {
   let subtotal = 0, totalDisc = 0;
   const rows = items.map(it => {
     const gross   = it.qty * it.unit_price;
@@ -160,16 +160,31 @@ function calcTotals(items, vatPct) {
     totalDisc += discAmt;
     return { ...it, gross, discAmt, net };
   });
-  const netSub   = subtotal - totalDisc;
-  const vatAmt   = netSub * (vatPct / 100);
-  const grand    = netSub + vatAmt;
-  return { rows, subtotal, totalDisc, netSub, vatAmt, grand };
+  const netSub = subtotal - totalDisc;
+
+  // Invoice-wide discount: applied between line discounts and VAT.
+  const invDiscEnabled = !!(invoiceDiscount && invoiceDiscount.enabled);
+  const invDiscType    = (invoiceDiscount && invoiceDiscount.type === "fixed") ? "fixed" : "pct";
+  const invDiscValue   = Math.max(0, Number(invoiceDiscount && invoiceDiscount.value) || 0);
+  let invDiscAmt = 0;
+  if (invDiscEnabled) {
+    invDiscAmt = invDiscType === "fixed" ? invDiscValue : netSub * (invDiscValue / 100);
+    if (invDiscAmt > netSub) invDiscAmt = netSub;
+  }
+  const taxableBase = netSub - invDiscAmt;
+  const vatAmt = taxableBase * (vatPct / 100);
+  const grand  = taxableBase + vatAmt;
+  return {
+    rows, subtotal, totalDisc, netSub,
+    invoiceDiscount: { enabled: invDiscEnabled, type: invDiscType, value: invDiscValue, amount: invDiscAmt },
+    taxableBase, vatAmt, grand,
+  };
 }
 
 // ── BUILD ──────────────────────────────────────────────────────────────────
 async function buildAndSave(data) {
   applyTheme(data.template || "aurora");
-  const { rows, subtotal, totalDisc, netSub, vatAmt, grand } = calcTotals(data.items, data.vat_pct || 0);
+  const { rows, subtotal, totalDisc, netSub, invoiceDiscount, vatAmt, grand } = calcTotals(data.items, data.vat_pct || 0, data.invoice_discount);
   const cur      = data.currency || "USD";
   const hasComp  = !!(data.seller && data.seller.name && data.seller.name.trim());
   const showDiscount = !!data.include_discount && totalDisc > 0;
@@ -367,8 +382,12 @@ async function buildAndSave(data) {
 
   const totRows = [tRow("Subtotal  /  مجموع فرعي", fmt(subtotal))];
   if (showDiscount) {
-    totRows.push(tRow("Discount  /  خصم", "- " + fmt(totalDisc)));
+    totRows.push(tRow("Line discount  /  خصم البنود", "- " + fmt(totalDisc)));
     totRows.push(tRow("Net Subtotal  /  صافي", fmt(netSub), { top: true }));
+  }
+  if (invoiceDiscount.enabled && invoiceDiscount.amount > 0) {
+    const pctSuffix = invoiceDiscount.type === "pct" ? ` (${invoiceDiscount.value}%)` : "";
+    totRows.push(tRow(`Invoice discount${pctSuffix}  /  خصم الفاتورة`, "- " + fmt(invoiceDiscount.amount)));
   }
   if (data.vat_pct > 0) {
     totRows.push(tRow(`VAT (${data.vat_pct}%)  /  ضريبة`, fmt(vatAmt)));
