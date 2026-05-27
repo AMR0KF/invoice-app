@@ -2533,11 +2533,11 @@ function routeView() {
   } else if (companies.length) {
     selectSettingsCompany(companies[0].id);
   } else {
-    newSettingsCompany();
+    newSettingsCompany({ silent: true });
   }
   const target = anchor ? document.querySelector(`[data-section="${anchor}"]`) : null;
-  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  else window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (target) target.scrollIntoView({ behavior: 'auto', block: 'start' });
+  else window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 window.addEventListener('hashchange', routeView);
@@ -2558,7 +2558,7 @@ function goToInvoice() {
 
 function closeSettingsOnBackdrop() { /* retained for legacy onclick handlers */ }
 
-function newSettingsCompany() {
+function newSettingsCompany(opts = {}) {
   settingsCompanyId = null;
   ['set-company-name','set-company-addr','set-company-phone','set-company-email'].forEach(id => {
     const el = document.getElementById(id);
@@ -2568,8 +2568,9 @@ function newSettingsCompany() {
   if (ind) ind.checked = false;
   updateEditorChrome();
   renderSettingsCompanyList();
+  if (opts.silent) return;
   const nameInput = document.getElementById('set-company-name');
-  if (nameInput) nameInput.focus();
+  if (nameInput) nameInput.focus({ preventScroll: true });
   const editor = document.getElementById('settings-company-editor');
   if (editor) editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
