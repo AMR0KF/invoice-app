@@ -2266,7 +2266,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   await initSupabaseAuth();
   if (!supabaseActive()) {
     toggleDiscount();
-    addRow();
+    if (!rowCount) addRow();
+    await loadInvoiceNumber();
+    routeView();
     return;
   }
   await loadInvoiceNumber();
@@ -2820,7 +2822,7 @@ function updateAuthUi() {
     signout.style.display = 'none';
     openAuthModal(true);
   } else {
-    document.body.classList.add('auth-locked');
+    document.body.classList.remove('auth-locked');
     btn.textContent = 'Local data';
     signout.style.display = 'none';
   }
