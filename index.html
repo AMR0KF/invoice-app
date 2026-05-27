@@ -245,6 +245,17 @@ body.auth-locked {
 }
 .bilabel .ar { font-family: 'Traditional Arabic', Arial, sans-serif; direction: rtl; }
 
+/* ── Document-language scope: hide opposite language on form chrome ── */
+body.doc-lang-en .bilabel .ar,
+body.doc-lang-en .thanks-stack .ar,
+body.doc-lang-en .notes-fixed .ar { display: none; }
+body.doc-lang-ar .bilabel > span:not(.ar),
+body.doc-lang-ar .thanks-stack > span:not(.ar):not(:has(.ar)),
+body.doc-lang-ar .notes-fixed > span:not(.ar):not(:has(.ar)) { display: none; }
+body.doc-lang-en .bilabel,
+body.doc-lang-ar .bilabel { justify-content: flex-start; }
+body.doc-lang-ar .bilabel { justify-content: flex-end; }
+
 /* ── Inputs ────────────────────────────────────────────────────────────── */
 input, select, textarea {
   width: 100%;
@@ -677,7 +688,7 @@ body.auth-locked #auth-cancel-btn {
 }
 .settings-page-head {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr;
   gap: 16px;
   align-items: center;
   padding-bottom: 8px;
@@ -710,29 +721,6 @@ body.auth-locked #auth-cancel-btn {
   color: var(--text2);
   font-size: 13px;
 }
-.settings-anchor-nav {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-}
-.settings-anchor {
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .03em;
-  color: var(--text2);
-  text-decoration: none;
-  transition: background .15s, color .15s;
-}
-.settings-anchor:hover { color: var(--text); }
-.settings-anchor.active { background: var(--accent); color: #fff; }
-
 .settings-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1640,9 +1628,7 @@ body.on-settings { padding-bottom: 0 !important; }
   .card { overflow-x: auto; }
   .settings-form-grid { grid-template-columns: 1fr; }
   .settings-page { padding: 14px 12px 80px; gap: 14px; }
-  .settings-page-head { grid-template-columns: auto 1fr; row-gap: 10px; }
-  .settings-anchor-nav { grid-column: 1 / -1; justify-self: stretch; justify-content: space-around; }
-  .settings-anchor { flex: 1; justify-content: center; padding: 8px 6px; }
+  .settings-page-head { row-gap: 10px; }
   .settings-card-head { flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; }
   .settings-card-actions { width: 100%; }
   .settings-card-actions .primary-btn { flex: 1; }
@@ -1672,6 +1658,86 @@ body.on-settings { padding-bottom: 0 !important; }
   .pdf-preview-actions .primary-btn {
     order: -1;
   }
+
+  /* ── Liquid glass (mobile only) ───────────────────────────────────────── */
+  @supports ((backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px))) {
+    body {
+      background:
+        radial-gradient(circle at 12% 8%, rgba(99, 102, 241, .18) 0%, transparent 40%),
+        radial-gradient(circle at 90% 18%, rgba(6, 182, 212, .14) 0%, transparent 38%),
+        radial-gradient(circle at 50% 90%, rgba(236, 72, 153, .10) 0%, transparent 45%),
+        var(--bg);
+      background-attachment: fixed;
+    }
+    body.light-theme {
+      background:
+        radial-gradient(circle at 12% 8%, rgba(99, 102, 241, .14) 0%, transparent 42%),
+        radial-gradient(circle at 90% 22%, rgba(13, 148, 136, .12) 0%, transparent 38%),
+        radial-gradient(circle at 50% 92%, rgba(236, 72, 153, .08) 0%, transparent 45%),
+        var(--bg);
+      background-attachment: fixed;
+    }
+    .topbar {
+      background: rgba(20, 24, 33, 0.58);
+      -webkit-backdrop-filter: saturate(180%) blur(22px);
+      backdrop-filter: saturate(180%) blur(22px);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      box-shadow: 0 1px 24px rgba(0,0,0,.22);
+    }
+    body.light-theme .topbar {
+      background: rgba(255,255,255,.55);
+      border-bottom: 1px solid rgba(15,23,42,.08);
+      box-shadow: 0 1px 24px rgba(15,23,42,.06);
+    }
+    .mobile-action-bar {
+      background: rgba(20, 24, 33, 0.55) !important;
+      -webkit-backdrop-filter: saturate(180%) blur(26px);
+      backdrop-filter: saturate(180%) blur(26px);
+      border-top: 1px solid rgba(255,255,255,.10);
+      box-shadow: 0 -8px 26px rgba(0,0,0,.30);
+    }
+    body.light-theme .mobile-action-bar {
+      background: rgba(255,255,255,.62) !important;
+      border-top: 1px solid rgba(15,23,42,.08);
+      box-shadow: 0 -8px 24px rgba(15,23,42,.10);
+    }
+    .mobile-action-btn {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+    }
+    body.light-theme .mobile-action-btn {
+      background: rgba(15,23,42,.04);
+      border-color: rgba(15,23,42,.10);
+    }
+    .card,
+    .settings-card,
+    .company-card,
+    .settings-company-editor {
+      background: rgba(28, 33, 44, 0.55);
+      -webkit-backdrop-filter: saturate(170%) blur(18px);
+      backdrop-filter: saturate(170%) blur(18px);
+      border-color: rgba(255,255,255,.08);
+    }
+    body.light-theme .card,
+    body.light-theme .settings-card,
+    body.light-theme .company-card,
+    body.light-theme .settings-company-editor {
+      background: rgba(255,255,255,.68);
+      border-color: rgba(15,23,42,.08);
+    }
+    .settings-card-head {
+      background: linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 100%);
+    }
+    body.light-theme .settings-card-head {
+      background: linear-gradient(180deg, rgba(15,23,42,.04) 0%, rgba(255,255,255,0) 100%);
+    }
+    .toast {
+      -webkit-backdrop-filter: saturate(180%) blur(18px);
+      backdrop-filter: saturate(180%) blur(18px);
+    }
+  }
 }
 </style>
 </head>
@@ -1684,9 +1750,8 @@ body.on-settings { padding-bottom: 0 !important; }
     <div class="topbar-sub">صانع الفواتير</div>
   </div>
   <nav class="topbar-nav" aria-label="Main navigation">
-    <button class="nav-link active" type="button">Invoices</button>
-    <button class="nav-link" type="button" onclick="openSettings('companies')">Companies</button>
-    <button class="nav-link" type="button" onclick="openSettings()">Settings</button>
+    <button class="nav-link" data-route="invoice" type="button" onclick="goToInvoice()">Invoices</button>
+    <button class="nav-link" data-route="settings" type="button" onclick="openSettings()">Settings</button>
   </nav>
   <div class="topbar-spacer"></div>
   <div class="topbar-actions">
@@ -2050,10 +2115,6 @@ body.on-settings { padding-bottom: 0 !important; }
         <h1>Settings</h1>
         <p>Workspace defaults and company profiles.</p>
       </div>
-      <nav class="settings-anchor-nav" aria-label="Jump to section">
-        <a href="#/settings/workspace" class="settings-anchor active" data-anchor="workspace">Workspace</a>
-        <a href="#/settings/companies" class="settings-anchor" data-anchor="companies">Companies</a>
-      </nav>
     </header>
 
     <article class="settings-card" id="settings-workspace" data-section="workspace">
@@ -2076,20 +2137,13 @@ body.on-settings { padding-bottom: 0 !important; }
         </div>
         <div class="settings-form-grid">
           <div class="field">
-            <div class="bilabel"><span>UI language</span><span class="ar">لغة الواجهة</span></div>
-            <select id="settings-ui-lang" onchange="saveDocumentSettings()">
-              <option value="en">English</option>
-              <option value="ar">Arabic / عربي</option>
-              <option value="bi">Bilingual / ثنائي</option>
-            </select>
-          </div>
-          <div class="field">
             <div class="bilabel"><span>Document language</span><span class="ar">لغة المستند</span></div>
             <select id="settings-doc-lang" onchange="saveDocumentSettings()">
+              <option value="bi">Bilingual / ثنائي</option>
               <option value="en">English</option>
               <option value="ar">Arabic / عربي</option>
-              <option value="bi">Bilingual / ثنائي</option>
             </select>
+            <div class="settings-row-hint">Affects every label on the form and PDF. Names (company &amp; parties) always print as entered.</div>
           </div>
           <div class="field">
             <div class="bilabel"><span>Invoice design</span><span class="ar">تصميم الفاتورة</span></div>
@@ -2253,10 +2307,14 @@ async function toggleThemeSetting() {
   toast(theme === 'light' ? 'Light mode enabled' : 'Dark mode enabled', 'success');
 }
 
+function applyDocLangClass(lang) {
+  document.body.classList.remove('doc-lang-en', 'doc-lang-ar', 'doc-lang-bi');
+  document.body.classList.add(`doc-lang-${lang || 'bi'}`);
+}
+
 function loadDocumentSettings() {
   const saved = localStorage.getItem('inv_default_currency') || 'USD';
   const currency = saved === 'LBP' ? 'LBP' : 'USD';
-  const uiLang = ['en', 'ar', 'bi'].includes(localStorage.getItem('inv_ui_lang')) ? localStorage.getItem('inv_ui_lang') : 'bi';
   const lang = ['en', 'ar', 'bi'].includes(localStorage.getItem('inv_doc_lang')) ? localStorage.getItem('inv_doc_lang') : 'bi';
   const template = normalizeTemplate(localStorage.getItem('inv_template') || 'aurora');
   const vatPct = localStorage.getItem('inv_vat_pct') || '0';
@@ -2268,8 +2326,8 @@ function loadDocumentSettings() {
   document.getElementById('invoice-template').value = template;
   document.getElementById('vat-pct').value = vatPct;
 
+  applyDocLangClass(lang);
   if (document.getElementById('settings-currency')) document.getElementById('settings-currency').value = currency;
-  if (document.getElementById('settings-ui-lang')) document.getElementById('settings-ui-lang').value = uiLang;
   if (document.getElementById('settings-doc-lang')) document.getElementById('settings-doc-lang').value = lang;
   if (document.getElementById('settings-template')) document.getElementById('settings-template').value = template;
   if (document.getElementById('side-template')) document.getElementById('side-template').value = template;
@@ -2281,10 +2339,8 @@ function loadDocumentSettings() {
 
 function currentDocumentSettings() {
   const currency = document.getElementById('currency').value === 'LBP' ? 'LBP' : 'USD';
-  const uiLang = ['en', 'ar', 'bi'].includes(localStorage.getItem('inv_ui_lang')) ? localStorage.getItem('inv_ui_lang') : 'bi';
   return {
     currency,
-    ui_language: uiLang,
     doc_language: document.getElementById('doc-lang').value || 'bi',
     template: normalizeTemplate(document.getElementById('invoice-template').value),
     vat_pct: parseFloat(document.getElementById('vat-pct').value) || 0,
@@ -2296,7 +2352,7 @@ async function loadRemoteDocumentSettings() {
   if (!supabaseActive()) return;
   const { data, error } = await supabaseClient
     .from('user_settings')
-    .select('currency,ui_language,doc_language,template,vat_pct,theme')
+    .select('currency,doc_language,template,vat_pct,theme')
     .eq('user_id', supabaseUser.id)
     .maybeSingle();
   if (error) {
@@ -2309,7 +2365,6 @@ async function loadRemoteDocumentSettings() {
   }
 
   localStorage.setItem('inv_default_currency', data.currency || 'USD');
-  localStorage.setItem('inv_ui_lang', data.ui_language || 'bi');
   localStorage.setItem('inv_doc_lang', data.doc_language || 'bi');
   localStorage.setItem('inv_template', normalizeTemplate(data.template || 'aurora'));
   localStorage.setItem('inv_vat_pct', String(data.vat_pct || 0));
@@ -2328,13 +2383,11 @@ async function saveRemoteDocumentSettings(showError = true) {
 
 async function saveDocumentSettings() {
   const currency = document.getElementById('settings-currency').value === 'LBP' ? 'LBP' : 'USD';
-  const uiLang = ['en', 'ar', 'bi'].includes(document.getElementById('settings-ui-lang').value) ? document.getElementById('settings-ui-lang').value : 'bi';
   const lang = ['en', 'ar', 'bi'].includes(document.getElementById('settings-doc-lang').value) ? document.getElementById('settings-doc-lang').value : 'bi';
   const template = normalizeTemplate(document.getElementById('settings-template').value);
   const vatPct = String(parseFloat(document.getElementById('settings-vat-pct').value) || 0);
 
   localStorage.setItem('inv_default_currency', currency);
-  localStorage.setItem('inv_ui_lang', uiLang);
   localStorage.setItem('inv_doc_lang', lang);
   localStorage.setItem('inv_template', template);
   localStorage.setItem('inv_vat_pct', vatPct);
@@ -2345,6 +2398,7 @@ async function saveDocumentSettings() {
   document.getElementById('vat-pct').value = vatPct;
   if (document.getElementById('side-template')) document.getElementById('side-template').value = template;
   if (document.getElementById('mobile-template')) document.getElementById('mobile-template').value = template;
+  applyDocLangClass(lang);
   recalc();
   await saveRemoteDocumentSettings();
   toast('Document settings saved', 'success');
@@ -2401,10 +2455,13 @@ function updateActionSummary() {
 function routeView() {
   const hash = (location.hash || '').replace(/^#/, '');
   const onSettings = hash.startsWith('/settings');
-  const anchor = (hash.split('/')[2] || 'workspace');
+  const anchor = hash.split('/')[2] || '';
   document.getElementById('view-invoice').hidden = onSettings;
   document.getElementById('view-settings').hidden = !onSettings;
   document.body.classList.toggle('on-settings', onSettings);
+  document.querySelectorAll('.topbar-nav .nav-link').forEach(el => {
+    el.classList.toggle('active', el.dataset.route === (onSettings ? 'settings' : 'invoice'));
+  });
   if (!onSettings) return;
   loadDocumentSettings();
   renderSettingsCompanyList();
@@ -2415,18 +2472,15 @@ function routeView() {
   } else {
     newSettingsCompany();
   }
-  document.querySelectorAll('.settings-anchor').forEach(el => {
-    el.classList.toggle('active', el.dataset.anchor === anchor);
-  });
-  const target = document.querySelector(`[data-section="${anchor}"]`);
+  const target = anchor ? document.querySelector(`[data-section="${anchor}"]`) : null;
   if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   else window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 window.addEventListener('hashchange', routeView);
 
-function openSettings(tab = 'workspace') {
-  const target = tab === 'companies' ? '#/settings/companies' : '#/settings/workspace';
+function openSettings(section = '') {
+  const target = section === 'companies' ? '#/settings/companies' : '#/settings';
   if (location.hash === target) routeView(); else location.hash = target;
 }
 

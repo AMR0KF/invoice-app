@@ -334,9 +334,9 @@ body.aurora .party strong { display: block; color: #101828; font-size: 10.5pt; l
 body.aurora .party span { color: #475467; font-size: 8pt; line-height: 1.5; }
 body.meridian .parties { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 6mm 0; margin-bottom: 9mm; }
 body.meridian .party { border: 0; border-radius: 0; padding: 0; min-height: 18mm; }
-.party h3 { margin: 0 0 2mm; color: var(--brand); font-size: 7.5pt; letter-spacing: .08em; }
-.party strong { display: block; color: var(--ink); }
-.party span { display: block; color: var(--muted); font-size: 8pt; margin-top: 1mm; }
+.party h3 { margin: 0 0 2mm; color: var(--brand); font-size: 7.5pt; letter-spacing: .08em; text-align: left; }
+.party strong { display: block; color: var(--ink); text-align: left; direction: ltr; unicode-bidi: plaintext; }
+.party span { display: block; color: var(--muted); font-size: 8pt; margin-top: 1mm; text-align: left; }
 table { width: 100%; border-collapse: collapse; margin-top: 5mm; }
 th { color: var(--brand); font-size: 7.5pt; text-align: right; padding: 3mm 2mm; border-bottom: 1px solid var(--line); }
 th:nth-child(2), td:nth-child(2) { text-align: left; }
@@ -541,8 +541,8 @@ body {
   font-size: 7.2pt; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
   color: var(--muted); margin: 0 0 2.5mm;
 }
-.party-name { font-size: 11pt; font-weight: 600; color: var(--ink); margin: 0 0 1.5mm; line-height: 1.3; }
-.party-line { font-size: 8pt; color: var(--ink-mid); line-height: 1.55; }
+.party-name { font-size: 11pt; font-weight: 600; color: var(--ink); margin: 0 0 1.5mm; line-height: 1.3; text-align: left; direction: ltr; unicode-bidi: plaintext; }
+.party-line { font-size: 8pt; color: var(--ink-mid); line-height: 1.55; text-align: left; }
 .items-table { width: 100%; border-collapse: collapse; margin-bottom: 8mm; }
 .items-table th {
   font-size: 7pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
