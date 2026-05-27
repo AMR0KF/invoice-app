@@ -1440,6 +1440,23 @@ body.on-settings { padding-bottom: 0 !important; }
   }
 }
 
+/* Settings view needs to scroll on desktop — the desktop media query
+   above locks html/body to overflow:hidden + height:100% for the
+   invoice grid, which clips the settings page. Re-enable scroll when
+   the settings view is active. Placed AFTER the desktop block so the
+   cascade wins. */
+@media (min-width: 901px) {
+  html:has(body.on-settings) {
+    height: auto;
+    overflow: auto;
+  }
+  body.on-settings {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+  }
+}
+
 @media (max-width: 720px) {
   #auth-modal {
     align-items: stretch;
