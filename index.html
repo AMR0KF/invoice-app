@@ -351,6 +351,13 @@
   </div>
   <div class="side-section" id="invoice-status-section">
     <div class="side-title">Invoice status</div>
+    <div class="editing-banner" id="editing-banner" hidden>
+      <div class="editing-banner-text">
+        <span class="editing-banner-label">Editing</span>
+        <strong id="editing-banner-number"></strong>
+      </div>
+      <button class="ghost-btn editing-banner-action" type="button" onclick="startNewInvoice()">Start new</button>
+    </div>
     <div class="status-row">
       <span class="status-badge" id="inv-status-badge" data-status="draft">Draft</span>
       <span class="status-meta" id="inv-status-meta"></span>
@@ -360,9 +367,10 @@
       <button class="ghost-btn status-btn" type="button" data-status="issued" onclick="setInvoiceStatus('issued')">Issued</button>
       <button class="ghost-btn status-btn" type="button" data-status="paid"   onclick="setInvoiceStatus('paid')">Paid</button>
     </div>
-    <button class="ghost-btn" type="button" onclick="duplicateCurrentInvoice()" style="width:100%;margin-top:8px">
-      Duplicate this invoice
-    </button>
+    <div class="status-side-actions">
+      <button class="ghost-btn" type="button" onclick="duplicateCurrentInvoice()">Duplicate</button>
+      <button class="ghost-btn danger" type="button" id="editor-delete-btn" onclick="deleteCurrentInvoice()" hidden>Delete</button>
+    </div>
   </div>
   <div class="side-section">
     <div class="side-title">Configuration</div>

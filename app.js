@@ -2,8 +2,11 @@
 let companies  = [];
 let customers  = [];
 let invoices   = [];   // persisted invoice records — populated by loadInvoices().
-let editingInvoiceId = null;  // when set, generating PDF updates this record
-                              // instead of creating a new one.
+let editingInvoiceId = null;     // when set, generating PDF updates this record
+                                 // instead of creating a new one.
+let editingBoundNumber = null;   // the invoice_number editingInvoiceId belongs to;
+                                 // setInvoiceNumber clears the binding when the
+                                 // number on screen no longer matches.
 let rowCount   = 0;
 let selCompId  = null;
 let selCustId  = null;
@@ -36,6 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadInvoiceNumber();
     if (!restored) restoreDraft();
     renderInvoiceStatus();
+    renderEditingBanner();
     wireDraftAutosave();
     routeView();
     return;
@@ -648,6 +652,10 @@ function useSettingsCompanyOnInvoice(showToast = true) {
   applyCompanyToInvoice(company);
   renderDropdown('company');
   if (showToast) toast('Company loaded on invoice', 'success');
+  // The button label promises navigation ("Use on invoice"); deliver on it.
+  // Internal callers pass showToast=false when they don't want the bounce
+  // (e.g. silent applies during save flows).
+  if (showToast) goToInvoice();
 }
 
 document.addEventListener('keydown', (event) => {
@@ -888,6 +896,16 @@ function setInvoiceNumber(value) {
   document.getElementById('inv-num').value = next;
   document.getElementById('inv-counter').textContent = next;
   localStorage.setItem('inv_next_number', next);
+  // If we were bound to a saved record, but the number on screen no longer
+  // matches that record's number, the next "Generate" should write a new
+  // record — not patch the previous one with someone else's data. (This
+  // happens right after a PDF gen, when the form auto-advances to the next
+  // number.)
+  if (editingBoundNumber && next !== editingBoundNumber) {
+    editingInvoiceId = null;
+    editingBoundNumber = null;
+    if (typeof renderEditingBanner === 'function') renderEditingBanner();
+  }
 }
 
 function normalizeCompany(company) {
@@ -1280,8 +1298,12 @@ async function persistGeneratedInvoice(generatedNumber) {
     });
   } else {
     const saved = await saveInvoice(record);
-    if (saved?.id) editingInvoiceId = saved.id;
+    if (saved?.id) {
+      editingInvoiceId = saved.id;
+      editingBoundNumber = saved.number || record.number;
+    }
   }
+  if (typeof renderEditingBanner === 'function') renderEditingBanner();
 }
 
 // Build the canonical invoice record from the current editor state.
@@ -2340,6 +2362,7 @@ function loadInvoiceIntoEditor(inv) {
   // Restore from inv.payload — same shape used by the draft restore path.
   if (!inv?.payload) return;
   editingInvoiceId = inv.id;
+  editingBoundNumber = inv.number || inv.payload?.invoice_number || null;
   currentInvoiceStatus = inv.status || 'draft';
   currentInvoicePaidDate = inv.paid_at ? (inv.paid_at.slice(0, 10)) : null;
   // Reuse restoreDraft's apply path by stuffing the payload into the draft slot.
@@ -2348,6 +2371,7 @@ function loadInvoiceIntoEditor(inv) {
   } catch {}
   restoreDraft();
   if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
+  if (typeof renderEditingBanner === 'function') renderEditingBanner();
 }
 
 async function markInvoicePaid(id) {
@@ -2382,6 +2406,7 @@ async function duplicateInvoiceFromList(id) {
 
 function duplicateFromPayload(payload) {
   editingInvoiceId = null;       // creating a new record on next gen
+  editingBoundNumber = null;
   currentInvoiceStatus = 'draft';
   currentInvoicePaidDate = null;
   const clone = JSON.parse(JSON.stringify(payload || {}));
@@ -2406,16 +2431,89 @@ function duplicateCurrentInvoice() {
 
 // + New invoice from the list header — clear the editor for a fresh draft.
 function newInvoiceFromList() {
+  startNewInvoice();
+  goToInvoice();
+}
+
+// Light in-place reset: clear bindings + draft, blank the form fields, pull
+// a fresh invoice number, drop a single empty line. No full reload required.
+async function startNewInvoice() {
   editingInvoiceId = null;
+  editingBoundNumber = null;
   currentInvoiceStatus = 'draft';
   currentInvoicePaidDate = null;
   clearDraft();
-  // Send the user back to the editor BEFORE reloading so the post-reload
-  // routeView() renders the editor instead of bouncing right back to the list.
-  if (location.hash && location.hash !== '#/' && location.hash !== '#') {
-    location.hash = '#/';
+  resetEditorForm();
+  try {
+    localStorage.removeItem('inv_next_number');
+    await loadInvoiceNumber();
+  } catch {}
+  recalc();
+  if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
+  if (typeof renderEditingBanner === 'function') renderEditingBanner();
+}
+
+// Blank the editor form back to a fresh-draft state. Does NOT touch the
+// invoice number — caller decides whether to bump it.
+function resetEditorForm() {
+  // Buyer + seller fields
+  ['b-name','b-addr','b-phone','b-email','s-name','s-addr','s-phone','s-email','notes']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const nt = document.getElementById('b-net-terms'); if (nt) nt.value = 30;
+  selCustId = null;
+  selCompId = null;
+  // Reset toggles
+  const chkDisc = document.getElementById('chk-discount'); if (chkDisc) chkDisc.checked = false;
+  const chkInvDisc = document.getElementById('chk-invoice-disc');
+  if (chkInvDisc) { chkInvDisc.checked = false; if (typeof toggleInvoiceDiscount === 'function') toggleInvoiceDiscount(); }
+  const chkDue = document.getElementById('chk-due'); if (chkDue) { chkDue.checked = false; if (typeof toggleDue === 'function') toggleDue(); }
+  const chkInd = document.getElementById('chk-individual-disclaimer'); if (chkInd) chkInd.checked = false;
+  // Reset dates
+  const today = new Date().toISOString().slice(0, 10);
+  const due   = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const d  = document.getElementById('inv-date'); if (d) d.value = today;
+  const dd = document.getElementById('inv-due');  if (dd) dd.value = due;
+  // Reset items to one empty row
+  const body = document.getElementById('items-body');
+  if (body) {
+    body.innerHTML = '';
+    rowCount = 0;
+    if (typeof addRow === 'function') addRow();
   }
-  setTimeout(() => location.reload(), 30);
+  if (typeof toggleDiscount === 'function') toggleDiscount();
+}
+
+// Editor sidebar: delete the bound record + reset the form to a fresh draft.
+async function deleteCurrentInvoice() {
+  if (!editingInvoiceId) return;
+  const bound = invoices.find(r => r.id === editingInvoiceId);
+  const label = bound?.number || 'this invoice';
+  if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+  const idToDelete = editingInvoiceId;
+  // Clear bindings BEFORE the delete so the autosave fires don't write the
+  // record back under the same id.
+  editingInvoiceId = null;
+  editingBoundNumber = null;
+  await deleteInvoiceRecord(idToDelete);
+  await startNewInvoice();
+  toast(`${label} deleted`, 'success');
+}
+
+// "Editing INV-068" banner — visible only when the form is bound to a saved
+// record. The number field stays editable; the banner just labels the link.
+function renderEditingBanner() {
+  const banner = document.getElementById('editing-banner');
+  const num    = document.getElementById('editing-banner-number');
+  const delBtn = document.getElementById('editor-delete-btn');
+  if (!banner) return;
+  if (editingInvoiceId && editingBoundNumber) {
+    banner.hidden = false;
+    if (num) num.textContent = editingBoundNumber;
+    if (delBtn) delBtn.hidden = false;
+  } else {
+    banner.hidden = true;
+    if (delBtn) delBtn.hidden = true;
+  }
 }
 
 // ── Bulk selection ────────────────────────────────────────────────────────
