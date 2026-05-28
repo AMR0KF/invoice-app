@@ -359,9 +359,21 @@ function closeSettings() {
   if (!document.getElementById('view-settings').hidden) goToInvoice();
 }
 
+// Always return to the editor regardless of where we came from.
+// Used by: the "Editor" tab on the desktop nav pill, the back buttons on
+// settings / invoices / customer-detail pages, and the mobile gear icon
+// when already on settings. Earlier versions only handled `#/settings`,
+// which silently no-op'd on the new `#/invoices` / `#/customers/<id>`
+// routes — that's the reported "can't get back to the editor" bug.
 function goToInvoice() {
-  if (location.hash.startsWith('#/settings')) location.hash = '#/';
-  else routeView();
+  const hash = location.hash || '';
+  if (hash && hash !== '#/' && hash !== '#') {
+    location.hash = '#/';   // triggers hashchange → routeView() renders editor
+    return;
+  }
+  // Already on the editor route (hash was empty or '#/'); hashchange won't
+  // fire, so render directly. Defensive — shouldn't normally be reached.
+  routeView();
 }
 
 function closeSettingsOnBackdrop() { /* retained for legacy onclick handlers */ }
@@ -642,7 +654,12 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if (supabaseActive()) closeAuthModal();
     closePdfPreview();
-    if (location.hash.startsWith('#/settings')) goToInvoice();
+    // Escape from any off-editor route returns to the editor. Was previously
+    // gated to #/settings only — now covers #/invoices and #/customers/<id>.
+    const hash = location.hash || '';
+    if (hash.startsWith('#/settings') || hash.startsWith('#/invoices') || hash.startsWith('#/customers/')) {
+      goToInvoice();
+    }
   }
 });
 
@@ -2316,7 +2333,7 @@ function openInvoiceFromList(id) {
   const inv = invoices.find(r => r.id === id);
   if (!inv) return;
   loadInvoiceIntoEditor(inv);
-  location.hash = '';
+  goToInvoice();   // unified back-to-editor path; handles already-on-editor case
 }
 
 function loadInvoiceIntoEditor(inv) {
@@ -2359,7 +2376,7 @@ async function duplicateInvoiceFromList(id) {
   const inv = invoices.find(r => r.id === id);
   if (!inv) return;
   duplicateFromPayload(inv.payload || {});
-  location.hash = '';
+  goToInvoice();
   toast(`Duplicated ${inv.number} into a new draft`, 'success');
 }
 
@@ -2393,8 +2410,12 @@ function newInvoiceFromList() {
   currentInvoiceStatus = 'draft';
   currentInvoicePaidDate = null;
   clearDraft();
-  location.hash = '';
-  setTimeout(() => location.reload(), 30); // simplest way to fully reset the form
+  // Send the user back to the editor BEFORE reloading so the post-reload
+  // routeView() renders the editor instead of bouncing right back to the list.
+  if (location.hash && location.hash !== '#/' && location.hash !== '#') {
+    location.hash = '#/';
+  }
+  setTimeout(() => location.reload(), 30);
 }
 
 // ── Bulk selection ────────────────────────────────────────────────────────
