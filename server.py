@@ -418,6 +418,14 @@ CORS(app)
 def index():
     return send_from_directory(str(BASE), "index.html")
 
+@app.route("/app.css")
+def serve_app_css():
+    return send_from_directory(str(BASE), "app.css")
+
+@app.route("/app.js")
+def serve_app_js():
+    return send_from_directory(str(BASE), "app.js")
+
 @app.route("/api/invoice-number", methods=["GET"])
 def get_invoice_number():
     settings = get_settings()
