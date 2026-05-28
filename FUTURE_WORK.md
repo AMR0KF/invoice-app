@@ -231,16 +231,24 @@ Once this exists:
 
 These don't need their own section but are worth tracking:
 
-- **Customer.net_terms_days persistence on Supabase.** Currently the
-  field is local-only because the remote `customers` table doesn't have
-  the column. Add a migration:
-  `ALTER TABLE customers ADD COLUMN net_terms_days int DEFAULT 30;`
-  Then drop the local-only carve-out in `saveCustomer()`.
+- **Send reminder on overdue invoices.** New row action / bulk action
+  on `#/invoices` for rows whose effective status is `overdue`.
+  Opens `mailto:` with a templated reminder body. Promote to a real
+  Resend send once #7 (email-the-invoice) lands.
 - **Company logo upload** for branded PDFs. Persist as base64 or to
   Supabase Storage; flow into the PDF templates' header.
 - **Customer-side autocomplete on buyer name.** The dropdown exists but
   could be smarter (fuzzy match, recently-used).
 - **Settings → bulk CSV export** of companies + customers, for backup.
+- **"Void" status** instead of hard delete on issued invoices, so
+  accountants have an audit trail of cancelled invoices.
+- **Number-gap warning.** If a user manually edits the invoice number
+  and creates a gap (INV-005 → INV-008), banner on the list page.
+- **Activity dashboard card** on the editor sidebar — `5 issued · 2
+  overdue · 1 paid this month`. Originally planned in
+  `.planning/INVOICE_LIST.md` step F, deferred.
+- **Save-as-template** for reusable invoice setups; precursor to
+  recurring invoices (#8).
 
 ---
 

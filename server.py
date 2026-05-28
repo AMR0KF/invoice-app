@@ -43,6 +43,7 @@ PRINTS.mkdir(exist_ok=True)
 
 COMPANIES_FILE = DATA / "companies.json"
 CUSTOMERS_FILE = DATA / "customers.json"
+INVOICES_FILE  = DATA / "invoices.json"
 SETTINGS_FILE = DATA / "settings.json"
 SUPABASE_CONFIG_FILE = STATIC_DATA / "supabase_config.json"
 
@@ -491,6 +492,57 @@ def delete_customer(cid):
     customers = [c for c in load_json(CUSTOMERS_FILE) if c.get("id") != cid]
     save_json(CUSTOMERS_FILE, customers)
     return jsonify({"ok": True})
+
+# ── Invoices (local-mode persistence) ─────────────────────────────────────────
+# Local fallback for the invoice list. Supabase users go through the JS
+# client directly; this endpoint covers `!supabaseActive()` mode (and dev).
+@app.route("/api/invoices", methods=["GET"])
+def list_invoices():
+    return jsonify(load_json(INVOICES_FILE))
+
+@app.route("/api/invoices", methods=["POST"])
+def create_invoice():
+    invoices = load_json(INVOICES_FILE)
+    record = request.json or {}
+    if not record.get("id"):
+        record["id"] = "iv" + uuid.uuid4().hex[:10]
+    record.setdefault("created_at", _iso_now())
+    record.setdefault("history", [])
+    invoices.append(record)
+    save_json(INVOICES_FILE, invoices)
+    return jsonify({"ok": True, "id": record["id"], "invoice": record})
+
+@app.route("/api/invoices/<iid>", methods=["PATCH"])
+def patch_invoice(iid):
+    invoices = load_json(INVOICES_FILE)
+    record = next((r for r in invoices if r.get("id") == iid), None)
+    if not record:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    fields = request.json or {}
+    # Track status transitions in history.
+    if "status" in fields and fields["status"] != record.get("status"):
+        record.setdefault("history", []).append({
+            "at":   _iso_now(),
+            "from": record.get("status"),
+            "to":   fields["status"],
+        })
+        if fields["status"] == "paid":
+            fields.setdefault("paid_at", _iso_now())
+        if fields["status"] == "issued":
+            fields.setdefault("sent_at", _iso_now())
+    record.update(fields)
+    save_json(INVOICES_FILE, invoices)
+    return jsonify({"ok": True, "invoice": record})
+
+@app.route("/api/invoices/<iid>", methods=["DELETE"])
+def delete_invoice(iid):
+    invoices = [r for r in load_json(INVOICES_FILE) if r.get("id") != iid]
+    save_json(INVOICES_FILE, invoices)
+    return jsonify({"ok": True})
+
+def _iso_now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 # ── Generate Invoice ──────────────────────────────────────────────────────────
 @app.route("/api/generate", methods=["POST"])

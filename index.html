@@ -16,7 +16,8 @@
     <div class="topbar-sub">صانع الفواتير</div>
   </div>
   <nav class="topbar-nav" aria-label="Main navigation">
-    <button class="nav-link" data-route="invoice" type="button" onclick="goToInvoice()">Invoices</button>
+    <button class="nav-link" data-route="invoice"  type="button" onclick="goToInvoice()">Editor</button>
+    <button class="nav-link" data-route="invoices" type="button" onclick="openInvoices()">Invoices</button>
     <button class="nav-link" data-route="settings" type="button" onclick="openSettings()">Settings</button>
   </nav>
   <div class="topbar-spacer"></div>
@@ -27,6 +28,16 @@
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
         <polyline points="16 17 21 12 16 7"></polyline>
         <line x1="21" y1="12" x2="9" y2="12"></line>
+      </svg>
+    </button>
+    <button class="icon-btn topbar-list-btn" id="topbar-list-btn" type="button" onclick="toggleInvoicesRoute()" aria-label="Invoice list" title="Invoices">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="8" y1="6"  x2="20" y2="6"></line>
+        <line x1="8" y1="12" x2="20" y2="12"></line>
+        <line x1="8" y1="18" x2="20" y2="18"></line>
+        <circle cx="4" cy="6"  r="1"></circle>
+        <circle cx="4" cy="12" r="1"></circle>
+        <circle cx="4" cy="18" r="1"></circle>
       </svg>
     </button>
     <button class="icon-btn topbar-settings-btn" id="topbar-settings-btn" type="button" onclick="toggleSettingsRoute()" aria-label="Settings" title="Settings">
@@ -199,6 +210,9 @@
       <div class="bilabel"><span>Payment terms (days) <small style="color:var(--text3)">net-N</small></span><span class="ar">مهلة السداد</span></div>
       <input id="b-net-terms" type="number" min="0" step="1" value="30" placeholder="30">
     </div>
+    <div style="margin-top:8px; font-size:11.5px; color:var(--text3); text-align:right">
+      <a href="#" id="b-history-link" onclick="event.preventDefault(); goToCustomerForCurrentBuyer()">View invoice history →</a>
+    </div>
   </div>
 
   <!-- ── LINE ITEMS ────────────────────────────────────────────────── -->
@@ -346,6 +360,9 @@
       <button class="ghost-btn status-btn" type="button" data-status="issued" onclick="setInvoiceStatus('issued')">Issued</button>
       <button class="ghost-btn status-btn" type="button" data-status="paid"   onclick="setInvoiceStatus('paid')">Paid</button>
     </div>
+    <button class="ghost-btn" type="button" onclick="duplicateCurrentInvoice()" style="width:100%;margin-top:8px">
+      Duplicate this invoice
+    </button>
   </div>
   <div class="side-section">
     <div class="side-title">Configuration</div>
@@ -398,6 +415,92 @@
     <button class="mobile-action-btn" id="mobile-share-btn" type="button" onclick="shareMobilePdf()" disabled>Share</button>
   </div>
 </div>
+</section>
+
+<!-- Invoices (full page view) -->
+<section id="view-invoices" hidden>
+  <div class="invoices-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="goToInvoice()" aria-label="Back to editor">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Editor</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1>Invoices</h1>
+        <p>Everything you've issued. Mark paid, duplicate, or export.</p>
+      </div>
+      <div class="invoices-page-actions">
+        <button class="ghost-btn" type="button" onclick="exportInvoicesCsv()" title="Export the current view as CSV">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span>Export CSV</span>
+        </button>
+        <button class="primary-btn" type="button" onclick="newInvoiceFromList()">+ New invoice</button>
+      </div>
+    </header>
+
+    <div class="invoices-toolbar">
+      <div class="invoices-chips" id="invoices-chips" role="tablist">
+        <button class="chip active" data-status="all"     onclick="setInvoiceFilter('all')">All</button>
+        <button class="chip"        data-status="draft"   onclick="setInvoiceFilter('draft')">Draft</button>
+        <button class="chip"        data-status="issued"  onclick="setInvoiceFilter('issued')">Issued</button>
+        <button class="chip"        data-status="overdue" onclick="setInvoiceFilter('overdue')">Overdue</button>
+        <button class="chip"        data-status="paid"    onclick="setInvoiceFilter('paid')">Paid</button>
+      </div>
+      <div class="invoices-search-wrap">
+        <svg class="invoices-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
+        <input id="invoices-search" type="search" placeholder="Search buyer or invoice #" oninput="onInvoicesSearch()">
+      </div>
+      <div class="invoices-sort">
+        <label class="invoices-sort-label" for="invoices-sort">Sort</label>
+        <select id="invoices-sort" onchange="onInvoicesSort()">
+          <option value="date_desc">Date · newest</option>
+          <option value="date_asc">Date · oldest</option>
+          <option value="total_desc">Total · high</option>
+          <option value="total_asc">Total · low</option>
+          <option value="status">Status</option>
+          <option value="buyer">Buyer A→Z</option>
+        </select>
+      </div>
+      <label class="invoices-group-toggle">
+        <input type="checkbox" id="invoices-group-by-customer" onchange="onInvoicesGroupToggle()">
+        <span>Group by customer</span>
+      </label>
+    </div>
+
+    <div class="invoices-list" id="invoices-list" aria-live="polite"></div>
+
+    <div class="invoices-bulkbar" id="invoices-bulkbar" hidden>
+      <span class="invoices-bulkbar-count" id="invoices-bulkbar-count">0 selected</span>
+      <div class="invoices-bulkbar-actions">
+        <button class="ghost-btn" type="button" onclick="bulkMarkPaid()">Mark paid</button>
+        <button class="ghost-btn" type="button" onclick="bulkDuplicate()">Duplicate</button>
+        <button class="danger-btn" type="button" onclick="bulkDelete()">Delete</button>
+        <button class="secondary-btn" type="button" onclick="clearBulkSelection()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Customer detail view -->
+<section id="view-customer" hidden>
+  <div class="customer-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="goToInvoiceList()" aria-label="Back to invoices">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Invoices</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1 id="customer-detail-name">Customer</h1>
+        <p id="customer-detail-meta"></p>
+      </div>
+    </header>
+    <div class="customer-stats" id="customer-stats"></div>
+    <div class="invoices-list" id="customer-invoices-list"></div>
+  </div>
 </section>
 
 <!-- Settings (full page view) -->
@@ -474,6 +577,16 @@
               <span class="switch-meta">
                 <strong>Year-prefixed numbers</strong>
                 <small>Use <code>INV-YYYY-001</code> and reset to 001 on Jan 1.</small>
+              </span>
+            </label>
+          </div>
+          <div class="settings-toggle">
+            <label class="switch-control" for="settings-auto-issue">
+              <input type="checkbox" id="settings-auto-issue" onchange="toggleAutoIssue()" checked>
+              <span class="switch-track" aria-hidden="true"></span>
+              <span class="switch-meta">
+                <strong>Auto-mark issued on generate</strong>
+                <small>Flips a draft to "issued" when the PDF is generated. Turn off to keep drafts as-is.</small>
               </span>
             </label>
           </div>

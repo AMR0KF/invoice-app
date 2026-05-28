@@ -1,6 +1,9 @@
 // ── State ──────────────────────────────────────────────────────────────────
 let companies  = [];
 let customers  = [];
+let invoices   = [];   // persisted invoice records — populated by loadInvoices().
+let editingInvoiceId = null;  // when set, generating PDF updates this record
+                              // instead of creating a new one.
 let rowCount   = 0;
 let selCompId  = null;
 let selCustId  = null;
@@ -22,12 +25,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('inv-due').value  = new Date(Date.now() + 7*864e5).toISOString().split('T')[0];
   loadDocumentSettings();
   renderItemHistoryDatalist();
+  // Restore FIRST so the empty-form initial recalc() can't wipe a saved draft.
+  // restoreDraft itself runs with _draftRestoring=true to guard against
+  // recursive saves while it's populating fields.
+  const restored = restoreDraft();
   await initSupabaseAuth();
   if (!supabaseActive()) {
     toggleDiscount();
     if (!rowCount) addRow();
     await loadInvoiceNumber();
-    restoreDraft();
+    if (!restored) restoreDraft();
     renderInvoiceStatus();
     wireDraftAutosave();
     routeView();
@@ -39,7 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadCustomers();
   toggleDiscount();
   if (!rowCount) addRow();
-  restoreDraft();
+  if (!restored) restoreDraft();
   renderInvoiceStatus();
   wireDraftAutosave();
   routeView();
@@ -83,6 +90,12 @@ async function toggleThemeSetting() {
   applyTheme(theme);
   await saveRemoteDocumentSettings();
   toast(theme === 'light' ? 'Light mode enabled' : 'Dark mode enabled', 'success');
+}
+
+function toggleAutoIssue() {
+  const on = document.getElementById('settings-auto-issue').checked;
+  localStorage.setItem('inv_auto_issue', on ? '1' : '0');
+  toast(on ? 'Will auto-mark issued on generate' : 'Manual status only', 'success');
 }
 
 function toggleYearPrefix() {
@@ -131,6 +144,8 @@ function loadDocumentSettings() {
   if (document.getElementById('settings-vat-pct')) document.getElementById('settings-vat-pct').value = vatPct;
   const yearChk = document.getElementById('settings-year-prefix');
   if (yearChk) yearChk.checked = yearPrefix;
+  const autoChk = document.getElementById('settings-auto-issue');
+  if (autoChk) autoChk.checked = localStorage.getItem('inv_auto_issue') !== '0';
   recalc();
   updateActionSummary();
 }
@@ -276,13 +291,38 @@ function updateActionSummary() {
 function routeView() {
   const hash = (location.hash || '').replace(/^#/, '');
   const onSettings = hash.startsWith('/settings');
+  const onInvoices = hash.startsWith('/invoices');
+  const onCustomerDetail = hash.startsWith('/customers/');
   const anchor = hash.split('/')[2] || '';
-  document.getElementById('view-invoice').hidden = onSettings;
+  document.getElementById('view-invoice').hidden  = onSettings || onInvoices || onCustomerDetail;
   document.getElementById('view-settings').hidden = !onSettings;
+  const invoicesEl = document.getElementById('view-invoices');
+  if (invoicesEl) invoicesEl.hidden = !onInvoices;
+  const custEl = document.getElementById('view-customer');
+  if (custEl) custEl.hidden = !onCustomerDetail;
   document.body.classList.toggle('on-settings', onSettings);
+  document.body.classList.toggle('on-invoices', onInvoices);
+  document.body.classList.toggle('on-customer', onCustomerDetail);
   document.querySelectorAll('.topbar-nav .nav-link').forEach(el => {
-    el.classList.toggle('active', el.dataset.route === (onSettings ? 'settings' : 'invoice'));
+    let route = 'invoice';
+    if (onSettings) route = 'settings';
+    else if (onInvoices) route = 'invoices';
+    el.classList.toggle('active', el.dataset.route === route);
   });
+  if (onInvoices) {
+    // Show page chrome immediately, then load and render.
+    renderInvoicesPage();
+    loadInvoices().then(renderInvoicesPage).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (onCustomerDetail) {
+    const cid = hash.split('/')[2] || '';
+    renderCustomerDetail(cid);
+    loadInvoices().then(() => renderCustomerDetail(cid)).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
   if (!onSettings) return;
   loadDocumentSettings();
   renderSettingsCompanyList();
@@ -296,6 +336,10 @@ function routeView() {
   const target = anchor ? document.querySelector(`[data-section="${anchor}"]`) : null;
   if (target) target.scrollIntoView({ behavior: 'auto', block: 'start' });
   else window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function openInvoices() {
+  if (location.hash === '#/invoices') routeView(); else location.hash = '#/invoices';
 }
 
 window.addEventListener('hashchange', routeView);
@@ -969,7 +1013,7 @@ async function loadCustomers() {
   if (supabaseActive()) {
     const { data, error } = await supabaseClient
       .from('customers')
-      .select('id,name,address,phone,email')
+      .select('id,name,address,phone,email,net_terms_days')
       .order('created_at', { ascending: true });
     if (error) {
       toast(error.message || 'Could not load clients', 'error');
@@ -1005,14 +1049,12 @@ async function saveCustomer() {
     net_terms_days: netTermsDays,
   };
   if (supabaseActive()) {
-    // Supabase column may not exist yet — keep the payload portable by
-    // omitting net_terms_days from the remote call until the table is
-    // migrated. The local copy still tracks it through loadCustomers().
     const payload = {
       name: cust.name,
       address: cust.address,
       phone: cust.phone,
       email: cust.email,
+      net_terms_days: cust.net_terms_days,
     };
     const query = cust.id
       ? supabaseClient.from('customers').update(payload).eq('id', cust.id).select('id').single()
@@ -1071,6 +1113,183 @@ async function deleteCustomer() {
   selCustId = null;
   ['b-name','b-addr','b-phone','b-email'].forEach(id => document.getElementById(id).value = '');
   toast('Client deleted', 'success');
+}
+
+// ── Invoices (persistence layer) ───────────────────────────────────────────
+// Mirrors the customers/companies dual-mode shape: Supabase when signed in,
+// local JSON / localStorage otherwise. All callers use these helpers — never
+// touch supabaseClient.from('invoices') directly elsewhere.
+
+const INVOICES_LS = 'inv_invoices_v1';
+function _loadInvoicesLS() {
+  try { const r = localStorage.getItem(INVOICES_LS); return r ? JSON.parse(r) : []; } catch { return []; }
+}
+function _saveInvoicesLS(list) {
+  try { localStorage.setItem(INVOICES_LS, JSON.stringify(list)); } catch {}
+}
+
+async function loadInvoices() {
+  if (supabaseActive()) {
+    const { data, error } = await supabaseClient
+      .from('invoices')
+      .select('*')
+      .order('date', { ascending: false });
+    if (error) {
+      // Most likely cause: 2026-05-28-invoices.sql hasn't been run yet.
+      console.warn('Invoices load skipped:', error.message || error);
+      invoices = _loadInvoicesLS();   // fall back to local cache
+      return;
+    }
+    invoices = data || [];
+    return;
+  }
+  try {
+    invoices = await API('GET', '/api/invoices');
+    _saveInvoicesLS(invoices);   // mirror server → localStorage so offline still reads
+  } catch {
+    invoices = _loadInvoicesLS();
+  }
+}
+
+async function saveInvoice(record) {
+  // Used after PDF generation. record carries number, status, date, etc.
+  const nowIso = new Date().toISOString();
+  const base = {
+    number:   record.number,
+    status:   record.status || 'draft',
+    date:     record.date,
+    due_date: record.due_date || null,
+    customer_id: record.customer_id || null,
+    buyer:    record.buyer || {},
+    seller:   record.seller || {},
+    total:    Number(record.total) || 0,
+    currency: record.currency || 'USD',
+    payload:  record.payload || {},
+    history:  record.history || [],
+  };
+  if (supabaseActive()) {
+    const { data, error } = await supabaseClient
+      .from('invoices')
+      .insert({ ...base, user_id: supabaseUser.id })
+      .select('*')
+      .single();
+    if (error) {
+      console.warn('Invoice save skipped:', error.message || error);
+      // Fall back to localStorage so the user doesn't lose the record.
+      const fallback = { ...base, id: 'iv' + Date.now(), created_at: nowIso };
+      invoices.unshift(fallback);
+      _saveInvoicesLS(invoices);
+      return fallback;
+    }
+    invoices.unshift(data);
+    return data;
+  }
+  try {
+    const r = await API('POST', '/api/invoices', base);
+    const saved = r.invoice || { ...base, id: r.id, created_at: nowIso };
+    invoices.unshift(saved);
+    _saveInvoicesLS(invoices);
+    return saved;
+  } catch {
+    const saved = { ...base, id: 'iv' + Date.now(), created_at: nowIso };
+    invoices.unshift(saved);
+    _saveInvoicesLS(invoices);
+    return saved;
+  }
+}
+
+async function patchInvoice(id, fields) {
+  // Apply the patch optimistically, then push to backend. On any failure,
+  // re-load to reconcile.
+  const idx = invoices.findIndex(r => r.id === id);
+  if (idx < 0) return null;
+  const before = { ...invoices[idx] };
+  const hist = Array.isArray(before.history) ? before.history.slice() : [];
+  if (fields.status && fields.status !== before.status) {
+    hist.push({ at: new Date().toISOString(), from: before.status, to: fields.status });
+    if (fields.status === 'paid' && !fields.paid_at)  fields.paid_at = new Date().toISOString();
+    if (fields.status === 'issued' && !fields.sent_at) fields.sent_at = new Date().toISOString();
+  }
+  invoices[idx] = { ...before, ...fields, history: hist };
+  _saveInvoicesLS(invoices);
+
+  if (supabaseActive()) {
+    const { error } = await supabaseClient
+      .from('invoices')
+      .update({ ...fields, history: hist })
+      .eq('id', id);
+    if (error) { console.warn('Invoice patch failed:', error.message); await loadInvoices(); }
+  } else {
+    try { await API('PATCH', '/api/invoices/' + encodeURIComponent(id), { ...fields, history: hist }); }
+    catch { /* localStorage already updated */ }
+  }
+  return invoices[idx];
+}
+
+async function deleteInvoiceRecord(id) {
+  invoices = invoices.filter(r => r.id !== id);
+  _saveInvoicesLS(invoices);
+  if (supabaseActive()) {
+    const { error } = await supabaseClient.from('invoices').delete().eq('id', id);
+    if (error) { console.warn('Invoice delete failed:', error.message); await loadInvoices(); }
+  } else {
+    try { await API('DELETE', '/api/invoices/' + encodeURIComponent(id)); } catch {}
+  }
+}
+
+// Auto-flip draft → issued on PDF generation (suggestion #3). User can opt
+// out via the settings toggle.
+function isAutoIssueEnabled() {
+  return localStorage.getItem('inv_auto_issue') !== '0';   // default ON
+}
+
+// Persistence wrapper called from generateInvoice success paths. Either
+// inserts a new record or patches the one we're currently editing.
+async function persistGeneratedInvoice(generatedNumber) {
+  if (isAutoIssueEnabled() && currentInvoiceStatus === 'draft') {
+    currentInvoiceStatus = 'issued';
+    if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
+  }
+  const record = buildInvoiceRecordFromForm(generatedNumber);
+  if (editingInvoiceId) {
+    await patchInvoice(editingInvoiceId, {
+      status:   record.status,
+      total:    record.total,
+      buyer:    record.buyer,
+      seller:   record.seller,
+      currency: record.currency,
+      due_date: record.due_date,
+      payload:  record.payload,
+    });
+  } else {
+    const saved = await saveInvoice(record);
+    if (saved?.id) editingInvoiceId = saved.id;
+  }
+}
+
+// Build the canonical invoice record from the current editor state.
+// Called after a successful PDF generation.
+function buildInvoiceRecordFromForm(generatedNumber) {
+  const payload = collectData();
+  // Use the number we just generated under (server may have advanced
+  // next_invoice_number afterward — we want to record the one printed).
+  const number = generatedNumber || payload.invoice_number;
+  // The grand total from the live UI.
+  const totalText = (document.getElementById('t-grand')?.textContent || '').replace(/[^0-9.\-]/g, '');
+  const total = parseFloat(totalText) || 0;
+  return {
+    number,
+    status:      currentInvoiceStatus || 'draft',
+    date:        payload.date,
+    due_date:    payload.due_date,
+    customer_id: selCustId || null,
+    buyer:       payload.buyer,
+    seller:      payload.seller,
+    total,
+    currency:    payload.currency,
+    payload,
+    history:     [],
+  };
 }
 
 // ── Dropdown rendering ─────────────────────────────────────────────────────
@@ -1654,6 +1873,7 @@ async function generatePdfFile(options = {}) {
         a.click();
       }
       if (options.open) window.open(url, '_blank');
+      await persistGeneratedInvoice(data.invoice_number);
       setInvoiceNumber(nextInvoiceNumber(data.invoice_number));
       rememberItems(data.items);
       toast(`${filename} ready`, 'success');
@@ -1676,6 +1896,7 @@ async function generatePdfFile(options = {}) {
     if (options.open) {
       window.open(pdfDownloadUrl(r.filename), '_blank');
     }
+    await persistGeneratedInvoice(data.invoice_number);
     setInvoiceNumber(r.next_invoice_number || document.getElementById('inv-num').value);
     rememberItems(data.items);
     toast(`${r.filename} ready`, 'success');
@@ -1899,3 +2120,438 @@ document.getElementById('vat-pct').addEventListener('input', recalc);
 
 // Init recalc
 recalc();
+
+// ─────────────────────────────────────────────────────────────────────────
+// INVOICES LIST PAGE — render, filters, search, sort, group, bulk actions
+// ─────────────────────────────────────────────────────────────────────────
+
+// UI state for the list page (not persisted; resets between sessions).
+let invListFilter = 'all';
+let invListSort   = 'date_desc';
+let invListGroup  = false;
+let invListSearch = '';
+const invSelection = new Set();
+
+function setInvoiceFilter(status) {
+  invListFilter = status;
+  document.querySelectorAll('#invoices-chips .chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.status === status);
+  });
+  renderInvoicesPage();
+}
+function onInvoicesSearch() {
+  invListSearch = (document.getElementById('invoices-search')?.value || '').trim().toLowerCase();
+  renderInvoicesPage();
+}
+function onInvoicesSort() {
+  invListSort = document.getElementById('invoices-sort').value;
+  renderInvoicesPage();
+}
+function onInvoicesGroupToggle() {
+  invListGroup = document.getElementById('invoices-group-by-customer').checked;
+  renderInvoicesPage();
+}
+function clearBulkSelection() {
+  invSelection.clear();
+  renderInvoicesPage();
+}
+
+// "Overdue" is derived. status=='issued' AND today > (date + buyer.net_terms_days).
+function invoiceIsOverdue(inv) {
+  if (inv.status !== 'issued') return false;
+  if (!inv.date) return false;
+  const issued = new Date(inv.date + 'T00:00:00');
+  if (isNaN(issued)) return false;
+  const net = parseInt(inv.buyer?.net_terms_days ?? 30, 10);
+  const due = new Date(issued.getTime() + net * 864e5);
+  return new Date() > due;
+}
+function effectiveInvoiceStatus(inv) {
+  if (inv.status === 'paid') return 'paid';
+  if (invoiceIsOverdue(inv)) return 'overdue';
+  return inv.status || 'draft';
+}
+function statusBadge(status) {
+  const label = status.charAt(0).toUpperCase() + status.slice(1);
+  return `<span class="status-badge" data-status="${status}">${label}</span>`;
+}
+function fmtMoney(amount, currency) {
+  return (currency || 'USD') + ' ' + Number(amount || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// Filter+search+sort pipeline. Returns rows ready for grouping/render.
+function pipelineInvoices() {
+  let rows = (invoices || []).slice();
+  // Filter
+  if (invListFilter !== 'all') {
+    rows = rows.filter(r => effectiveInvoiceStatus(r) === invListFilter);
+  }
+  // Search
+  if (invListSearch) {
+    rows = rows.filter(r => {
+      const buyer = (r.buyer?.name || '').toLowerCase();
+      const num   = (r.number || '').toLowerCase();
+      return buyer.includes(invListSearch) || num.includes(invListSearch);
+    });
+  }
+  // Sort
+  const dir = invListSort.endsWith('asc') ? 1 : -1;
+  rows.sort((a, b) => {
+    if (invListSort.startsWith('date'))  return dir * (String(a.date).localeCompare(String(b.date)));
+    if (invListSort.startsWith('total')) return dir * (Number(a.total) - Number(b.total));
+    if (invListSort === 'status')        return effectiveInvoiceStatus(a).localeCompare(effectiveInvoiceStatus(b));
+    if (invListSort === 'buyer')         return (a.buyer?.name || '').localeCompare(b.buyer?.name || '');
+    return 0;
+  });
+  return rows;
+}
+
+function renderChipCounts() {
+  const counts = { all: invoices.length, draft: 0, issued: 0, overdue: 0, paid: 0 };
+  invoices.forEach(r => { counts[effectiveInvoiceStatus(r)] = (counts[effectiveInvoiceStatus(r)] || 0) + 1; });
+  document.querySelectorAll('#invoices-chips .chip').forEach(chip => {
+    const key = chip.dataset.status;
+    const existing = chip.querySelector('.chip-count');
+    const html = ` <span class="chip-count">${counts[key] || 0}</span>`;
+    if (existing) existing.remove();
+    chip.insertAdjacentHTML('beforeend', html);
+  });
+}
+
+function rowHtml(inv) {
+  const eff = effectiveInvoiceStatus(inv);
+  const isSelected = invSelection.has(inv.id);
+  const buyerName = inv.buyer?.name || '(no buyer)';
+  const buyerMeta = inv.buyer?.email || inv.buyer?.phone || '';
+  const due = inv.due_date || '—';
+  const isPaid = inv.status === 'paid';
+  const payBtn = isPaid
+    ? `<button class="row-action" type="button" onclick="event.stopPropagation(); markUnpaid('${inv.id}')">Unpay</button>`
+    : `<button class="row-action pay" type="button" onclick="event.stopPropagation(); markInvoicePaid('${inv.id}')">Paid</button>`;
+  const history = Array.isArray(inv.history) ? inv.history.slice().reverse() : [];
+  const historyHtml = history.length
+    ? `<div class="invoice-row-history" onclick="event.stopPropagation()">
+         <strong>Status history</strong>
+         <ol>${history.map(h => `<li>${escapeHtml(h.at?.slice(0, 10) || '')} · ${escapeHtml(h.from || '')} → ${escapeHtml(h.to || '')}</li>`).join('')}</ol>
+       </div>`
+    : '';
+  return `
+    <div class="invoice-row${isSelected ? ' selected' : ''}" data-id="${inv.id}" onclick="openInvoiceFromList('${inv.id}')">
+      <label class="row-check" onclick="event.stopPropagation()">
+        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleRowSelected('${inv.id}', this.checked)">
+      </label>
+      <div class="row-num">${escapeHtml(inv.number || '')}</div>
+      <div class="row-buyer">
+        ${escapeHtml(buyerName)}
+        ${buyerMeta ? `<span class="row-buyer-meta">${escapeHtml(buyerMeta)}</span>` : ''}
+      </div>
+      <div class="row-date">${escapeHtml(inv.date || '')}</div>
+      <div class="row-due">${escapeHtml(due)}</div>
+      <div class="row-status">${statusBadge(eff)}</div>
+      <div class="row-total">${fmtMoney(inv.total, inv.currency)}</div>
+      <div class="row-actions" onclick="event.stopPropagation()">
+        ${payBtn}
+        <button class="row-action" type="button" onclick="duplicateInvoiceFromList('${inv.id}')">Copy</button>
+        <button class="row-action" type="button" onclick="toggleHistoryRow(this)">⋯</button>
+        <button class="row-action danger" type="button" onclick="deleteInvoiceFromList('${inv.id}')" aria-label="Delete">✕</button>
+      </div>
+      ${historyHtml}
+    </div>`;
+}
+
+function toggleHistoryRow(btn) {
+  btn.closest('.invoice-row').classList.toggle('expanded');
+}
+
+function renderInvoicesPage() {
+  const list = document.getElementById('invoices-list');
+  if (!list) return;
+  renderChipCounts();
+  const rows = pipelineInvoices();
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="invoices-empty">
+      <strong>No invoices yet.</strong><br>
+      ${invoices.length === 0
+        ? 'Generate one from the editor to populate this list.'
+        : 'No matches for the current filter or search.'}
+    </div>`;
+    updateBulkBar();
+    return;
+  }
+  if (invListGroup) {
+    // Group by customer (or "(no buyer)") with outstanding total in header.
+    const groups = new Map();
+    rows.forEach(r => {
+      const key = r.buyer?.name || '(no buyer)';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    });
+    list.innerHTML = Array.from(groups.entries()).map(([name, rs]) => {
+      const outstanding = rs
+        .filter(r => effectiveInvoiceStatus(r) === 'issued' || effectiveInvoiceStatus(r) === 'overdue')
+        .reduce((sum, r) => sum + Number(r.total || 0), 0);
+      const cur = rs[0]?.currency || 'USD';
+      const id = rs[0]?.customer_id || '';
+      const headLink = id
+        ? `onclick="goToCustomer('${id}')"`
+        : '';
+      return `
+        <div class="invoice-group-head">
+          <h3 ${headLink}>${escapeHtml(name)}</h3>
+          <div class="outstanding">${rs.length} invoice${rs.length === 1 ? '' : 's'} · Outstanding <strong>${fmtMoney(outstanding, cur)}</strong></div>
+        </div>
+        ${rs.map(rowHtml).join('')}`;
+    }).join('');
+  } else {
+    list.innerHTML = rows.map(rowHtml).join('');
+  }
+  updateBulkBar();
+}
+
+// ── Row actions ───────────────────────────────────────────────────────────
+function openInvoiceFromList(id) {
+  const inv = invoices.find(r => r.id === id);
+  if (!inv) return;
+  loadInvoiceIntoEditor(inv);
+  location.hash = '';
+}
+
+function loadInvoiceIntoEditor(inv) {
+  // Restore from inv.payload — same shape used by the draft restore path.
+  if (!inv?.payload) return;
+  editingInvoiceId = inv.id;
+  currentInvoiceStatus = inv.status || 'draft';
+  currentInvoicePaidDate = inv.paid_at ? (inv.paid_at.slice(0, 10)) : null;
+  // Reuse restoreDraft's apply path by stuffing the payload into the draft slot.
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), data: inv.payload }));
+  } catch {}
+  restoreDraft();
+  if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
+}
+
+async function markInvoicePaid(id) {
+  await patchInvoice(id, { status: 'paid' });
+  renderInvoicesPage();
+  toast('Marked paid', 'success');
+}
+async function markUnpaid(id) {
+  await patchInvoice(id, { status: 'issued', paid_at: null });
+  renderInvoicesPage();
+  toast('Reverted to issued', 'success');
+}
+async function deleteInvoiceFromList(id) {
+  const inv = invoices.find(r => r.id === id);
+  if (!inv) return;
+  if (!confirm(`Delete ${inv.number}? This cannot be undone.`)) return;
+  await deleteInvoiceRecord(id);
+  invSelection.delete(id);
+  renderInvoicesPage();
+  toast('Invoice deleted', 'success');
+}
+
+// Duplicate from a list row → opens the editor as a fresh draft prepopulated
+// from the source invoice's payload. New number, today's date, status=draft.
+async function duplicateInvoiceFromList(id) {
+  const inv = invoices.find(r => r.id === id);
+  if (!inv) return;
+  duplicateFromPayload(inv.payload || {});
+  location.hash = '';
+  toast(`Duplicated ${inv.number} into a new draft`, 'success');
+}
+
+function duplicateFromPayload(payload) {
+  editingInvoiceId = null;       // creating a new record on next gen
+  currentInvoiceStatus = 'draft';
+  currentInvoicePaidDate = null;
+  const clone = JSON.parse(JSON.stringify(payload || {}));
+  // Reset the per-invoice scalars: date, due, number stay default; status reset.
+  clone.invoice_number = document.getElementById('inv-num')?.value || 'INV-001';
+  clone.date = new Date().toISOString().slice(0, 10);
+  const net = Math.max(0, parseInt(clone.buyer?.net_terms_days ?? 30, 10) || 30);
+  clone.due_date = new Date(Date.now() + net * 864e5).toISOString().slice(0, 10);
+  clone.status = 'draft';
+  clone.paid_date = null;
+  // Reuse restoreDraft to push it into the form.
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), data: clone })); } catch {}
+  restoreDraft();
+  if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
+}
+
+// Editor sidebar: "Duplicate this invoice" button.
+function duplicateCurrentInvoice() {
+  duplicateFromPayload(collectData());
+  toast('Duplicated into a new draft', 'success');
+}
+
+// + New invoice from the list header — clear the editor for a fresh draft.
+function newInvoiceFromList() {
+  editingInvoiceId = null;
+  currentInvoiceStatus = 'draft';
+  currentInvoicePaidDate = null;
+  clearDraft();
+  location.hash = '';
+  setTimeout(() => location.reload(), 30); // simplest way to fully reset the form
+}
+
+// ── Bulk selection ────────────────────────────────────────────────────────
+function toggleRowSelected(id, checked) {
+  if (checked) invSelection.add(id); else invSelection.delete(id);
+  const row = document.querySelector(`.invoice-row[data-id="${id}"]`);
+  if (row) row.classList.toggle('selected', checked);
+  updateBulkBar();
+}
+function updateBulkBar() {
+  const bar = document.getElementById('invoices-bulkbar');
+  const cnt = document.getElementById('invoices-bulkbar-count');
+  if (!bar || !cnt) return;
+  const n = invSelection.size;
+  bar.hidden = n === 0;
+  cnt.textContent = `${n} selected`;
+}
+async function bulkMarkPaid() {
+  const ids = Array.from(invSelection);
+  let ok = 0;
+  for (const id of ids) { try { await patchInvoice(id, { status: 'paid' }); ok++; } catch {} }
+  invSelection.clear();
+  renderInvoicesPage();
+  toast(`${ok} marked paid`, 'success');
+}
+async function bulkDuplicate() {
+  const ids = Array.from(invSelection);
+  for (const id of ids) {
+    const inv = invoices.find(r => r.id === id);
+    if (!inv) continue;
+    // For bulk duplicate, save each as a new draft record directly — we
+    // can't open the editor for every one. Instead create draft records.
+    const payload = JSON.parse(JSON.stringify(inv.payload || {}));
+    payload.status = 'draft';
+    payload.invoice_number = nextInvoiceNumber(payload.invoice_number || 'INV-001');
+    payload.date = new Date().toISOString().slice(0, 10);
+    await saveInvoice({
+      number: payload.invoice_number,
+      status: 'draft',
+      date: payload.date,
+      due_date: null,
+      customer_id: inv.customer_id,
+      buyer: payload.buyer,
+      seller: payload.seller,
+      total: Number(inv.total) || 0,
+      currency: payload.currency || 'USD',
+      payload,
+      history: [],
+    });
+  }
+  invSelection.clear();
+  renderInvoicesPage();
+  toast(`Duplicated ${ids.length} invoices`, 'success');
+}
+async function bulkDelete() {
+  const ids = Array.from(invSelection);
+  if (!confirm(`Delete ${ids.length} invoice${ids.length === 1 ? '' : 's'}?`)) return;
+  for (const id of ids) await deleteInvoiceRecord(id);
+  invSelection.clear();
+  renderInvoicesPage();
+  toast(`Deleted ${ids.length}`, 'success');
+}
+
+// ── CSV export (suggestion 6) ─────────────────────────────────────────────
+function exportInvoicesCsv() {
+  const rows = pipelineInvoices();
+  if (rows.length === 0) { toast('Nothing to export', 'error'); return; }
+  const header = ['number','date','due_date','buyer','currency','total','status','paid_at','issued_age_days'];
+  const csvLines = [header.join(',')];
+  const today = new Date();
+  rows.forEach(r => {
+    const eff = effectiveInvoiceStatus(r);
+    const issuedAge = r.date ? Math.floor((today - new Date(r.date + 'T00:00:00')) / 864e5) : '';
+    const cells = [
+      r.number || '',
+      r.date || '',
+      r.due_date || '',
+      r.buyer?.name || '',
+      r.currency || '',
+      Number(r.total || 0).toFixed(2),
+      eff,
+      r.paid_at ? r.paid_at.slice(0, 10) : '',
+      issuedAge,
+    ].map(v => {
+      const s = String(v).replace(/"/g, '""');
+      return /[,\"\n]/.test(s) ? `"${s}"` : s;
+    });
+    csvLines.push(cells.join(','));
+  });
+  const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `invoices-${today.toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${rows.length} rows`, 'success');
+}
+
+// ── Customer detail page ─────────────────────────────────────────────────
+function goToCustomer(customerId) {
+  if (!customerId) return;
+  location.hash = '#/customers/' + encodeURIComponent(customerId);
+}
+function goToInvoiceList() { location.hash = '#/invoices'; }
+
+// "View invoice history →" link in the buyer block. Only useful when a
+// saved customer is selected; show a toast otherwise.
+function goToCustomerForCurrentBuyer() {
+  if (selCustId) { goToCustomer(selCustId); return; }
+  toast('Save this client first to see their history', 'error');
+}
+
+function renderCustomerDetail(customerId) {
+  const cust = (customers || []).find(c => c.id === customerId);
+  const invs = (invoices || []).filter(r => r.customer_id === customerId);
+  document.getElementById('customer-detail-name').textContent = cust?.name || 'Customer';
+  document.getElementById('customer-detail-meta').textContent = cust ? (cust.email || cust.phone || '') : '';
+  const stats = document.getElementById('customer-stats');
+  const list  = document.getElementById('customer-invoices-list');
+  // Totals
+  const cur = invs[0]?.currency || 'USD';
+  const totalInvoiced = invs.reduce((s, r) => s + Number(r.total || 0), 0);
+  const outstanding = invs
+    .filter(r => effectiveInvoiceStatus(r) === 'issued' || effectiveInvoiceStatus(r) === 'overdue')
+    .reduce((s, r) => s + Number(r.total || 0), 0);
+  const paidCount = invs.filter(r => r.status === 'paid').length;
+  const paidWithDate = invs.filter(r => r.status === 'paid' && r.paid_at && r.date);
+  let avgDaysToPay = '—';
+  if (paidWithDate.length) {
+    const sum = paidWithDate.reduce((s, r) => s + Math.max(0, Math.floor((new Date(r.paid_at) - new Date(r.date + 'T00:00:00')) / 864e5)), 0);
+    avgDaysToPay = Math.round(sum / paidWithDate.length) + ' days';
+  }
+  stats.innerHTML = `
+    <div class="customer-stat"><span class="label">Total invoiced</span><span class="value">${fmtMoney(totalInvoiced, cur)}</span></div>
+    <div class="customer-stat"><span class="label">Outstanding</span><span class="value outstanding">${fmtMoney(outstanding, cur)}</span></div>
+    <div class="customer-stat"><span class="label">Paid invoices</span><span class="value paid">${paidCount}</span></div>
+    <div class="customer-stat"><span class="label">Avg days to pay</span><span class="value">${avgDaysToPay}</span></div>`;
+  if (invs.length === 0) {
+    list.innerHTML = `<div class="invoices-empty"><strong>No invoices for this customer yet.</strong></div>`;
+    return;
+  }
+  list.innerHTML = invs.map(rowHtml).join('');
+}
+
+// Mobile gear-equivalent for the list icon.
+function toggleInvoicesRoute() {
+  if (location.hash.startsWith('#/invoices')) goToInvoice();
+  else openInvoices();
+}
+
+// Preload invoices on boot so the list is ready when opened. Wrapped so a
+// failure doesn't break the editor.
+(async function bootInvoicePreload() {
+  try {
+    // Wait one tick so supabase init has a chance to complete.
+    setTimeout(async () => { try { await loadInvoices(); } catch {} }, 800);
+  } catch {}
+})();
+

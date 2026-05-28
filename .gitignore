@@ -10,6 +10,7 @@ data/print_jobs/
 data/settings.json
 data/companies.json
 data/customers.json
+data/invoices.json
 data/supabase_config.json
 .vercel/
 

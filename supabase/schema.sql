@@ -22,7 +22,28 @@ create table if not exists public.customers (
   address text not null default '',
   phone text not null default '',
   email text not null default '',
+  net_terms_days integer not null default 30 check (net_terms_days >= 0),
   created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.invoices (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  number text not null,
+  status text not null default 'draft' check (status in ('draft', 'issued', 'paid')),
+  date date not null,
+  due_date date,
+  customer_id uuid references public.customers(id) on delete set null,
+  buyer jsonb not null default '{}'::jsonb,
+  seller jsonb not null default '{}'::jsonb,
+  total numeric(14,2) not null default 0,
+  currency text not null default 'USD' check (currency in ('USD', 'LBP')),
+  payload jsonb not null default '{}'::jsonb,
+  history jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  paid_at timestamptz,
   updated_at timestamptz not null default now()
 );
 
@@ -62,9 +83,22 @@ create trigger user_settings_touch_updated_at
 before update on public.user_settings
 for each row execute function public.touch_updated_at();
 
+drop trigger if exists invoices_touch_updated_at on public.invoices;
+create trigger invoices_touch_updated_at
+before update on public.invoices
+for each row execute function public.touch_updated_at();
+
+create index if not exists invoices_user_date_idx
+  on public.invoices (user_id, date desc);
+create index if not exists invoices_user_status_idx
+  on public.invoices (user_id, status);
+create index if not exists invoices_customer_idx
+  on public.invoices (customer_id);
+
 alter table public.companies enable row level security;
 alter table public.customers enable row level security;
 alter table public.user_settings enable row level security;
+alter table public.invoices enable row level security;
 
 drop policy if exists "Companies are owned by the signed-in user" on public.companies;
 create policy "Companies are owned by the signed-in user"
@@ -90,7 +124,16 @@ to authenticated
 using ((select auth.uid()) = user_id)
 with check ((select auth.uid()) = user_id);
 
+drop policy if exists "Invoices are owned by the signed-in user" on public.invoices;
+create policy "Invoices are owned by the signed-in user"
+on public.invoices
+for all
+to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.companies to authenticated;
 grant select, insert, update, delete on public.customers to authenticated;
 grant select, insert, update, delete on public.user_settings to authenticated;
+grant select, insert, update, delete on public.invoices to authenticated;
