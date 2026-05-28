@@ -2,11 +2,28 @@
 let companies  = [];
 let customers  = [];
 let invoices   = [];   // persisted invoice records — populated by loadInvoices().
-let editingInvoiceId = null;     // when set, generating PDF updates this record
-                                 // instead of creating a new one.
-let editingBoundNumber = null;   // the invoice_number editingInvoiceId belongs to;
-                                 // setInvoiceNumber clears the binding when the
-                                 // number on screen no longer matches.
+// Single source of truth for the editor's binding to a saved record.
+// mode === 'new'      → form represents a fresh draft; Generate inserts a
+//                        new invoices row and advances the number.
+// mode === 'editing'  → form is bound to invoices[id=invoiceId]; Generate
+//                        patches that row, does not advance the number,
+//                        does not clear the form.
+let editor = {
+  mode: 'new',
+  invoiceId: null,
+  boundNumber: null,
+  dirty: false,
+};
+function setEditorMode(mode, inv = null) {
+  editor.mode = mode === 'editing' ? 'editing' : 'new';
+  editor.invoiceId   = editor.mode === 'editing' ? (inv?.id ?? null) : null;
+  editor.boundNumber = editor.mode === 'editing'
+    ? (inv?.number ?? inv?.payload?.invoice_number ?? null)
+    : null;
+  editor.dirty = false;
+  if (typeof renderEditingBanner === 'function') renderEditingBanner();
+  if (typeof renderEditingSaveButton === 'function') renderEditingSaveButton();
+}
 let rowCount   = 0;
 let selCompId  = null;
 let selCustId  = null;
@@ -62,9 +79,42 @@ document.addEventListener('DOMContentLoaded', async () => {
 function wireDraftAutosave() {
   const view = document.getElementById('view-invoice');
   if (!view || view.dataset.autosaveWired === '1') return;
-  view.addEventListener('input',  saveDraft);
-  view.addEventListener('change', saveDraft);
+  view.addEventListener('input',  onEditorInput);
+  view.addEventListener('change', onEditorInput);
   view.dataset.autosaveWired = '1';
+
+  // Number field: break the editing binding the moment the user types a
+  // number that no longer matches the bound record. Otherwise the next
+  // Generate would patch the original record with a different number's data.
+  const numEl = document.getElementById('inv-num');
+  if (numEl && numEl.dataset.numListenerWired !== '1') {
+    numEl.addEventListener('input', (e) => {
+      if (editor.mode !== 'editing') return;
+      if (_draftRestoring) return;
+      const v = (e.target.value || '').trim();
+      if (v && v !== editor.boundNumber) {
+        setEditorMode('new');
+        toast('Number changed — this will save as a new invoice', 'info');
+      }
+    });
+    numEl.dataset.numListenerWired = '1';
+  }
+}
+
+// Single delegated handler for any input/change inside #view-invoice.
+//   - 'new' mode: persist into inv_draft_v1 (debounced).
+//   - 'editing' mode: do NOT touch the draft slot; flip editor.dirty so
+//     the "Save changes" button enables.
+function onEditorInput() {
+  if (_draftRestoring) return;
+  if (editor.mode === 'editing') {
+    if (!editor.dirty) {
+      editor.dirty = true;
+      if (typeof renderEditingSaveButton === 'function') renderEditingSaveButton();
+    }
+    return;
+  }
+  saveDraft();
 }
 
 // ── Language toggle ────────────────────────────────────────────────────────
@@ -877,7 +927,44 @@ function rememberItems(items) {
   renderItemHistoryDatalist();
 }
 
+// Derive the next invoice number from the invoices table — single source of
+// truth. With year-prefix enabled, we only look at THIS year's records so the
+// sequence resets to 001 on Jan 1. Without it, look at the global max.
+function computeNextInvoiceNumber() {
+  const list = Array.isArray(invoices) ? invoices : [];
+  const yearPrefix = isYearPrefixEnabled();
+  const currentYear = new Date().getFullYear();
+  let maxSeq = 0;
+  let lastPrefix = 'INV';
+  for (const inv of list) {
+    const num = String(inv?.number || inv?.payload?.invoice_number || '').trim();
+    if (!num) continue;
+    const m = num.match(/^(.*?)(?:-(\d{4}))?-?(\d+)$/);
+    if (!m) continue;
+    const head = (m[1] || 'INV').replace(/-+$/, '') || 'INV';
+    const storedYear = m[2] ? parseInt(m[2], 10) : null;
+    const seq = parseInt(m[3], 10) || 0;
+    if (yearPrefix && storedYear !== currentYear) continue;
+    lastPrefix = head;
+    if (seq > maxSeq) maxSeq = seq;
+  }
+  const nextSeq = maxSeq + 1;
+  if (yearPrefix) {
+    return `${lastPrefix}-${currentYear}-${String(nextSeq).padStart(3, '0')}`;
+  }
+  return `${lastPrefix}-${String(nextSeq).padStart(3, '0')}`;
+}
+
 async function loadInvoiceNumber() {
+  // Try to derive from the in-memory invoices list first — server-authoritative
+  // computation that ignores any stale localStorage counter.
+  if (Array.isArray(invoices) && invoices.length > 0) {
+    setInvoiceNumber(computeNextInvoiceNumber());
+    return;
+  }
+  // No invoices loaded yet (boot path, or no records). Fall back to the
+  // cached number, then the Flask counter, then INV-001. Once invoices
+  // load, callers should call computeNextInvoiceNumber() again.
   const cached = localStorage.getItem('inv_next_number');
   if (cached) {
     setInvoiceNumber(cached);
@@ -901,10 +988,8 @@ function setInvoiceNumber(value) {
   // record — not patch the previous one with someone else's data. (This
   // happens right after a PDF gen, when the form auto-advances to the next
   // number.)
-  if (editingBoundNumber && next !== editingBoundNumber) {
-    editingInvoiceId = null;
-    editingBoundNumber = null;
-    if (typeof renderEditingBanner === 'function') renderEditingBanner();
+  if (editor.mode === 'editing' && editor.boundNumber && next !== editor.boundNumber) {
+    setEditorMode('new');
   }
 }
 
@@ -1286,8 +1371,8 @@ async function persistGeneratedInvoice(generatedNumber) {
     if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
   }
   const record = buildInvoiceRecordFromForm(generatedNumber);
-  if (editingInvoiceId) {
-    await patchInvoice(editingInvoiceId, {
+  if (editor.mode === 'editing' && editor.invoiceId) {
+    await patchInvoice(editor.invoiceId, {
       status:   record.status,
       total:    record.total,
       buyer:    record.buyer,
@@ -1296,14 +1381,34 @@ async function persistGeneratedInvoice(generatedNumber) {
       due_date: record.due_date,
       payload:  record.payload,
     });
+    editor.dirty = false;
+    if (typeof renderEditingSaveButton === 'function') renderEditingSaveButton();
   } else {
     const saved = await saveInvoice(record);
     if (saved?.id) {
-      editingInvoiceId = saved.id;
-      editingBoundNumber = saved.number || record.number;
+      setEditorMode('editing', saved);
     }
   }
-  if (typeof renderEditingBanner === 'function') renderEditingBanner();
+}
+
+// "Save changes" button in the editing banner. Patches the bound record
+// with the current form payload — no PDF generation, no number bump.
+async function saveEditingChanges() {
+  if (editor.mode !== 'editing' || !editor.invoiceId) return;
+  if (!editor.dirty) return;
+  const record = buildInvoiceRecordFromForm(editor.boundNumber);
+  await patchInvoice(editor.invoiceId, {
+    status:   record.status,
+    total:    record.total,
+    buyer:    record.buyer,
+    seller:   record.seller,
+    currency: record.currency,
+    due_date: record.due_date,
+    payload:  record.payload,
+  });
+  editor.dirty = false;
+  if (typeof renderEditingSaveButton === 'function') renderEditingSaveButton();
+  toast(`Saved changes to ${editor.boundNumber}`, 'success');
 }
 
 // Build the canonical invoice record from the current editor state.
@@ -1570,7 +1675,12 @@ function setInvoiceStatus(next) {
   currentInvoiceStatus = next;
   currentInvoicePaidDate = next === 'paid' ? new Date().toISOString().slice(0, 10) : null;
   renderInvoiceStatus();
-  saveDraft();
+  if (editor.mode === 'editing') {
+    editor.dirty = true;
+    if (typeof renderEditingSaveButton === 'function') renderEditingSaveButton();
+  } else {
+    saveDraft();
+  }
 }
 
 function fmtNum(n) { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
@@ -1722,6 +1832,9 @@ let _draftRestoring = false;
 
 function saveDraft() {
   if (_draftRestoring) return;
+  // Never overwrite the draft slot while editing a saved record — those
+  // edits must land on the server via "Save changes" or stay ephemeral.
+  if (editor.mode === 'editing') return;
   if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
   _draftSaveTimer = setTimeout(() => {
     try {
@@ -1741,14 +1854,13 @@ function clearDraft() {
   try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
 }
 
-function restoreDraft() {
-  let raw; try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return false; }
-  if (!raw) return false;
-  let entry; try { entry = JSON.parse(raw); } catch (e) { return false; }
-  const d = entry?.data; if (!d) return false;
+// Pure DOM hydration. No localStorage side effects. Two callers:
+//   - restoreDraft() — pulls payload from the inv_draft_v1 slot.
+//   - loadInvoiceIntoEditor() — applies a saved invoice's payload.
+function applyPayloadToForm(d) {
+  if (!d) return;
   _draftRestoring = true;
   try {
-    // Scalars
     const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
     set('inv-num',   d.invoice_number);
     set('inv-date',  d.date);
@@ -1758,14 +1870,10 @@ function restoreDraft() {
     set('doc-lang',  d.language);
     set('notes',     d.notes);
     // Due date toggle
-    if (d.due_date) {
-      const chk = document.getElementById('chk-due'); if (chk) { chk.checked = true; toggleDue(); }
-      set('inv-due', d.due_date);
-    }
+    const chkDue = document.getElementById('chk-due');
+    if (chkDue) { chkDue.checked = !!d.due_date; if (typeof toggleDue === 'function') toggleDue(); }
+    if (d.due_date) set('inv-due', d.due_date);
     // Buyer / seller fields
-    ['name','address','phone','email'].forEach(k => {
-      set('b-' + (k === 'name' ? 'name' : k.slice(0,4)), d.buyer?.[k]);
-    });
     if (d.buyer) {
       set('b-name', d.buyer.name); set('b-addr', d.buyer.address);
       set('b-phone', d.buyer.phone); set('b-email', d.buyer.email);
@@ -1776,15 +1884,22 @@ function restoreDraft() {
       set('s-phone', d.seller.phone); set('s-email', d.seller.email);
     }
     // Line discount toggle
-    if (d.include_discount) {
-      const chk = document.getElementById('chk-discount'); if (chk) { chk.checked = true; toggleDiscount(); }
-    }
+    const chkDisc = document.getElementById('chk-discount');
+    if (chkDisc) { chkDisc.checked = !!d.include_discount; if (typeof toggleDiscount === 'function') toggleDiscount(); }
     // Invoice-wide discount
+    const chkInvDisc = document.getElementById('chk-invoice-disc');
+    if (chkInvDisc) {
+      chkInvDisc.checked = !!d.invoice_discount?.enabled;
+      if (typeof toggleInvoiceDiscount === 'function') toggleInvoiceDiscount();
+    }
     if (d.invoice_discount?.enabled) {
-      const chk = document.getElementById('chk-invoice-disc'); if (chk) { chk.checked = true; toggleInvoiceDiscount(); }
       set('invoice-disc-type',  d.invoice_discount.type);
       set('invoice-disc-value', d.invoice_discount.value);
     }
+    // Individual disclaimer toggle (lives on the company-side block but is
+    // persisted with the invoice payload).
+    const chkInd = document.getElementById('chk-individual-disclaimer');
+    if (chkInd) chkInd.checked = !!d.individual_disclaimer;
     // Items — rebuild from scratch
     if (Array.isArray(d.items) && d.items.length > 0) {
       const body = document.getElementById('items-body');
@@ -1801,7 +1916,7 @@ function restoreDraft() {
         });
       }
     }
-    // Status (consumed by #5)
+    // Status (consumed by renderInvoiceStatus)
     currentInvoiceStatus   = d.status || 'draft';
     currentInvoicePaidDate = d.paid_date || null;
     if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
@@ -1809,6 +1924,22 @@ function restoreDraft() {
     _draftRestoring = false;
   }
   recalc();
+}
+
+function restoreDraft() {
+  let raw; try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return false; }
+  if (!raw) return false;
+  let entry; try { entry = JSON.parse(raw); } catch (e) { return false; }
+  const d = entry?.data; if (!d) return false;
+  // Back-compat: the OLD loadInvoiceIntoEditor wrote saved-record payloads
+  // into the draft slot. If we see one of those leftovers (a non-draft
+  // status) discard it silently — never auto-rebind to a saved record on
+  // reload.
+  if (d.status && d.status !== 'draft') {
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    return false;
+  }
+  applyPayloadToForm(d);
   return true;
 }
 
@@ -1912,10 +2043,17 @@ async function generatePdfFile(options = {}) {
         a.click();
       }
       if (options.open) window.open(url, '_blank');
+      const wasEditing = editor.mode === 'editing';
+      const boundLabel = editor.boundNumber;
       await persistGeneratedInvoice(data.invoice_number);
-      setInvoiceNumber(nextInvoiceNumber(data.invoice_number));
+      if (wasEditing) {
+        // Patched in place — keep the form bound and the number unchanged.
+        toast(`Saved changes to ${boundLabel || data.invoice_number}`, 'success');
+      } else {
+        setInvoiceNumber(computeNextInvoiceNumber());
+        toast(`${filename} ready`, 'success');
+      }
       rememberItems(data.items);
-      toast(`${filename} ready`, 'success');
       return filename;
     }
 
@@ -1935,10 +2073,16 @@ async function generatePdfFile(options = {}) {
     if (options.open) {
       window.open(pdfDownloadUrl(r.filename), '_blank');
     }
+    const wasEditing2 = editor.mode === 'editing';
+    const boundLabel2 = editor.boundNumber;
     await persistGeneratedInvoice(data.invoice_number);
-    setInvoiceNumber(r.next_invoice_number || document.getElementById('inv-num').value);
+    if (wasEditing2) {
+      toast(`Saved changes to ${boundLabel2 || data.invoice_number}`, 'success');
+    } else {
+      setInvoiceNumber(computeNextInvoiceNumber());
+      toast(`${r.filename} ready`, 'success');
+    }
     rememberItems(data.items);
-    toast(`${r.filename} ready`, 'success');
     return r.filename;
   } catch (err) {
     const timedOut = err && err.name === 'AbortError';
@@ -2169,7 +2313,14 @@ let invListFilter = 'all';
 let invListSort   = 'date_desc';
 let invListGroup  = false;
 let invListSearch = '';
+let invListShowVoid = false;
 const invSelection = new Set();
+
+function toggleShowVoid() {
+  const chk = document.getElementById('invoices-show-void');
+  invListShowVoid = !!(chk && chk.checked);
+  renderInvoicesPage();
+}
 
 function setInvoiceFilter(status) {
   invListFilter = status;
@@ -2206,6 +2357,7 @@ function invoiceIsOverdue(inv) {
   return new Date() > due;
 }
 function effectiveInvoiceStatus(inv) {
+  if (inv.status === 'void') return 'void';
   if (inv.status === 'paid') return 'paid';
   if (invoiceIsOverdue(inv)) return 'overdue';
   return inv.status || 'draft';
@@ -2224,6 +2376,11 @@ function escapeHtml(s) {
 // Filter+search+sort pipeline. Returns rows ready for grouping/render.
 function pipelineInvoices() {
   let rows = (invoices || []).slice();
+  // Void records are hidden by default — opt in via the "Show voided"
+  // toggle, or by explicitly selecting the 'void' filter chip.
+  if (!invListShowVoid && invListFilter !== 'void') {
+    rows = rows.filter(r => effectiveInvoiceStatus(r) !== 'void');
+  }
   // Filter
   if (invListFilter !== 'all') {
     rows = rows.filter(r => effectiveInvoiceStatus(r) === invListFilter);
@@ -2249,8 +2406,17 @@ function pipelineInvoices() {
 }
 
 function renderChipCounts() {
-  const counts = { all: invoices.length, draft: 0, issued: 0, overdue: 0, paid: 0 };
-  invoices.forEach(r => { counts[effectiveInvoiceStatus(r)] = (counts[effectiveInvoiceStatus(r)] || 0) + 1; });
+  const visibleSource = invListShowVoid
+    ? invoices
+    : invoices.filter(r => effectiveInvoiceStatus(r) !== 'void');
+  const counts = { all: visibleSource.length, draft: 0, issued: 0, overdue: 0, paid: 0, void: 0 };
+  // Void count is always the total — that chip ignores the show-void toggle
+  // so the user can click it to switch into "voided only" view.
+  invoices.forEach(r => {
+    const eff = effectiveInvoiceStatus(r);
+    if (eff === 'void') counts.void += 1;
+    else counts[eff] = (counts[eff] || 0) + 1;
+  });
   document.querySelectorAll('#invoices-chips .chip').forEach(chip => {
     const key = chip.dataset.status;
     const existing = chip.querySelector('.chip-count');
@@ -2278,7 +2444,7 @@ function rowHtml(inv) {
        </div>`
     : '';
   return `
-    <div class="invoice-row${isSelected ? ' selected' : ''}" data-id="${inv.id}" onclick="openInvoiceFromList('${inv.id}')">
+    <div class="invoice-row${isSelected ? ' selected' : ''}${eff === 'void' ? ' voided' : ''}" data-id="${inv.id}" onclick="openInvoiceFromList('${inv.id}')">
       <label class="row-check" onclick="event.stopPropagation()">
         <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleRowSelected('${inv.id}', this.checked)">
       </label>
@@ -2361,17 +2527,11 @@ function openInvoiceFromList(id) {
 function loadInvoiceIntoEditor(inv) {
   // Restore from inv.payload — same shape used by the draft restore path.
   if (!inv?.payload) return;
-  editingInvoiceId = inv.id;
-  editingBoundNumber = inv.number || inv.payload?.invoice_number || null;
   currentInvoiceStatus = inv.status || 'draft';
   currentInvoicePaidDate = inv.paid_at ? (inv.paid_at.slice(0, 10)) : null;
-  // Reuse restoreDraft's apply path by stuffing the payload into the draft slot.
-  try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), data: inv.payload }));
-  } catch {}
-  restoreDraft();
+  applyPayloadToForm(inv.payload);
+  setEditorMode('editing', inv);
   if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
-  if (typeof renderEditingBanner === 'function') renderEditingBanner();
 }
 
 async function markInvoicePaid(id) {
@@ -2387,6 +2547,15 @@ async function markUnpaid(id) {
 async function deleteInvoiceFromList(id) {
   const inv = invoices.find(r => r.id === id);
   if (!inv) return;
+  const eff = effectiveInvoiceStatus(inv);
+  if (eff !== 'draft') {
+    if (!confirm(`Void ${inv.number}? It will stay in the list as voided.`)) return;
+    await patchInvoice(id, { status: 'void' });
+    invSelection.delete(id);
+    renderInvoicesPage();
+    toast(`${inv.number} voided`, 'success');
+    return;
+  }
   if (!confirm(`Delete ${inv.number}? This cannot be undone.`)) return;
   await deleteInvoiceRecord(id);
   invSelection.delete(id);
@@ -2405,8 +2574,7 @@ async function duplicateInvoiceFromList(id) {
 }
 
 function duplicateFromPayload(payload) {
-  editingInvoiceId = null;       // creating a new record on next gen
-  editingBoundNumber = null;
+  setEditorMode('new');           // creating a new record on next gen
   currentInvoiceStatus = 'draft';
   currentInvoicePaidDate = null;
   const clone = JSON.parse(JSON.stringify(payload || {}));
@@ -2417,9 +2585,7 @@ function duplicateFromPayload(payload) {
   clone.due_date = new Date(Date.now() + net * 864e5).toISOString().slice(0, 10);
   clone.status = 'draft';
   clone.paid_date = null;
-  // Reuse restoreDraft to push it into the form.
-  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), data: clone })); } catch {}
-  restoreDraft();
+  applyPayloadToForm(clone);
   if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
 }
 
@@ -2438,8 +2604,7 @@ function newInvoiceFromList() {
 // Light in-place reset: clear bindings + draft, blank the form fields, pull
 // a fresh invoice number, drop a single empty line. No full reload required.
 async function startNewInvoice() {
-  editingInvoiceId = null;
-  editingBoundNumber = null;
+  setEditorMode('new');
   currentInvoiceStatus = 'draft';
   currentInvoicePaidDate = null;
   clearDraft();
@@ -2450,7 +2615,6 @@ async function startNewInvoice() {
   } catch {}
   recalc();
   if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
-  if (typeof renderEditingBanner === 'function') renderEditingBanner();
 }
 
 // Blank the editor form back to a fresh-draft state. Does NOT touch the
@@ -2485,15 +2649,24 @@ function resetEditorForm() {
 
 // Editor sidebar: delete the bound record + reset the form to a fresh draft.
 async function deleteCurrentInvoice() {
-  if (!editingInvoiceId) return;
-  const bound = invoices.find(r => r.id === editingInvoiceId);
+  if (editor.mode !== 'editing' || !editor.invoiceId) return;
+  const bound = invoices.find(r => r.id === editor.invoiceId);
   const label = bound?.number || 'this invoice';
+  const eff = bound ? effectiveInvoiceStatus(bound) : 'draft';
+  // Issued/paid records get voided instead of hard-deleted (Part A7).
+  if (bound && eff !== 'draft') {
+    if (!confirm(`Void ${label}? It will stay in the list as voided.`)) return;
+    await patchInvoice(editor.invoiceId, { status: 'void' });
+    setEditorMode('new');
+    await startNewInvoice();
+    toast(`${label} voided`, 'success');
+    return;
+  }
   if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
-  const idToDelete = editingInvoiceId;
+  const idToDelete = editor.invoiceId;
   // Clear bindings BEFORE the delete so the autosave fires don't write the
   // record back under the same id.
-  editingInvoiceId = null;
-  editingBoundNumber = null;
+  setEditorMode('new');
   await deleteInvoiceRecord(idToDelete);
   await startNewInvoice();
   toast(`${label} deleted`, 'success');
@@ -2506,13 +2679,31 @@ function renderEditingBanner() {
   const num    = document.getElementById('editing-banner-number');
   const delBtn = document.getElementById('editor-delete-btn');
   if (!banner) return;
-  if (editingInvoiceId && editingBoundNumber) {
+  if (editor.mode === 'editing' && editor.invoiceId && editor.boundNumber) {
     banner.hidden = false;
-    if (num) num.textContent = editingBoundNumber;
-    if (delBtn) delBtn.hidden = false;
+    if (num) num.textContent = editor.boundNumber;
+    if (delBtn) {
+      const bound = invoices.find(r => r.id === editor.invoiceId);
+      const eff = bound ? effectiveInvoiceStatus(bound) : 'draft';
+      delBtn.hidden = false;
+      delBtn.textContent = eff === 'draft' ? 'Delete' : 'Void';
+    }
   } else {
     banner.hidden = true;
     if (delBtn) delBtn.hidden = true;
+  }
+}
+
+// Renders the editing-mode "Save changes" button. Enabled only when
+// editor.dirty === true. Wired by index.html (#editor-save-btn).
+function renderEditingSaveButton() {
+  const btn = document.getElementById('editor-save-btn');
+  if (!btn) return;
+  if (editor.mode === 'editing' && editor.invoiceId) {
+    btn.hidden = false;
+    btn.disabled = !editor.dirty;
+  } else {
+    btn.hidden = true;
   }
 }
 
@@ -2570,11 +2761,23 @@ async function bulkDuplicate() {
 }
 async function bulkDelete() {
   const ids = Array.from(invSelection);
-  if (!confirm(`Delete ${ids.length} invoice${ids.length === 1 ? '' : 's'}?`)) return;
-  for (const id of ids) await deleteInvoiceRecord(id);
+  const selected = invoices.filter(r => ids.includes(r.id));
+  const drafts  = selected.filter(r => effectiveInvoiceStatus(r) === 'draft');
+  const issued  = selected.filter(r => effectiveInvoiceStatus(r) !== 'draft');
+  const parts = [];
+  if (drafts.length) parts.push(`delete ${drafts.length} draft${drafts.length === 1 ? '' : 's'}`);
+  if (issued.length) parts.push(`void ${issued.length} issued/paid`);
+  if (!parts.length) return;
+  if (!confirm(`This will ${parts.join(' and ')}. Continue?`)) return;
+  for (const inv of drafts) await deleteInvoiceRecord(inv.id);
+  for (const inv of issued) { try { await patchInvoice(inv.id, { status: 'void' }); } catch {} }
   invSelection.clear();
   renderInvoicesPage();
-  toast(`Deleted ${ids.length}`, 'success');
+  const summary = [
+    drafts.length ? `${drafts.length} deleted` : null,
+    issued.length ? `${issued.length} voided` : null,
+  ].filter(Boolean).join(', ');
+  toast(summary, 'success');
 }
 
 // ── CSV export (suggestion 6) ─────────────────────────────────────────────
@@ -2670,7 +2873,18 @@ function toggleInvoicesRoute() {
 (async function bootInvoicePreload() {
   try {
     // Wait one tick so supabase init has a chance to complete.
-    setTimeout(async () => { try { await loadInvoices(); } catch {} }, 800);
+    setTimeout(async () => {
+      try {
+        await loadInvoices();
+        // Now that we have the authoritative list, recompute the next
+        // invoice number — but only when the editor is on a fresh draft.
+        // (If the user is editing a saved record we must not touch the
+        // form's number field.)
+        if (editor.mode === 'new' && Array.isArray(invoices) && invoices.length > 0) {
+          setInvoiceNumber(computeNextInvoiceNumber());
+        }
+      } catch {}
+    }, 800);
   } catch {}
 })();
 

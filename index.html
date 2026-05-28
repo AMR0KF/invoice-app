@@ -356,7 +356,10 @@
         <span class="editing-banner-label">Editing</span>
         <strong id="editing-banner-number"></strong>
       </div>
-      <button class="ghost-btn editing-banner-action" type="button" onclick="startNewInvoice()">Start new</button>
+      <div class="editing-banner-actions">
+        <button class="primary-btn editing-banner-save" type="button" id="editor-save-btn" onclick="saveEditingChanges()" hidden disabled>Save changes</button>
+        <button class="ghost-btn editing-banner-action" type="button" onclick="startNewInvoice()">Start new</button>
+      </div>
     </div>
     <div class="status-row">
       <span class="status-badge" id="inv-status-badge" data-status="draft">Draft</span>
@@ -455,6 +458,7 @@
         <button class="chip"        data-status="issued"  onclick="setInvoiceFilter('issued')">Issued</button>
         <button class="chip"        data-status="overdue" onclick="setInvoiceFilter('overdue')">Overdue</button>
         <button class="chip"        data-status="paid"    onclick="setInvoiceFilter('paid')">Paid</button>
+        <button class="chip"        data-status="void"    onclick="setInvoiceFilter('void')">Void</button>
       </div>
       <div class="invoices-search-wrap">
         <svg class="invoices-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
@@ -474,6 +478,10 @@
       <label class="invoices-group-toggle">
         <input type="checkbox" id="invoices-group-by-customer" onchange="onInvoicesGroupToggle()">
         <span>Group by customer</span>
+      </label>
+      <label class="invoices-group-toggle">
+        <input type="checkbox" id="invoices-show-void" onchange="toggleShowVoid()">
+        <span>Show voided</span>
       </label>
     </div>
 
@@ -579,23 +587,23 @@
             <input type="number" id="settings-vat-pct" value="0" min="0" max="100" onchange="saveDocumentSettings()">
           </div>
           <div class="settings-toggle">
+            <div class="settings-toggle-meta">
+              <strong>Year-prefixed numbers</strong>
+              <small>Use <code>INV-YYYY-001</code> and reset to 001 on Jan 1.</small>
+            </div>
             <label class="switch-control" for="settings-year-prefix">
               <input type="checkbox" id="settings-year-prefix" onchange="toggleYearPrefix()">
               <span class="switch-track" aria-hidden="true"></span>
-              <span class="switch-meta">
-                <strong>Year-prefixed numbers</strong>
-                <small>Use <code>INV-YYYY-001</code> and reset to 001 on Jan 1.</small>
-              </span>
             </label>
           </div>
           <div class="settings-toggle">
+            <div class="settings-toggle-meta">
+              <strong>Auto-mark issued on generate</strong>
+              <small>Flips a draft to "issued" when the PDF is generated. Turn off to keep drafts as-is.</small>
+            </div>
             <label class="switch-control" for="settings-auto-issue">
               <input type="checkbox" id="settings-auto-issue" onchange="toggleAutoIssue()" checked>
               <span class="switch-track" aria-hidden="true"></span>
-              <span class="switch-meta">
-                <strong>Auto-mark issued on generate</strong>
-                <small>Flips a draft to "issued" when the PDF is generated. Turn off to keep drafts as-is.</small>
-              </span>
             </label>
           </div>
         </div>
