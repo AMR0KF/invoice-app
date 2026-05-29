@@ -16,10 +16,21 @@
     <div class="topbar-sub">صانع الفواتير</div>
   </div>
   <nav class="topbar-nav" aria-label="Main navigation">
-    <button class="nav-link" data-route="invoice"  type="button" onclick="goToInvoice()">Editor</button>
-    <button class="nav-link" data-route="invoices" type="button" onclick="openInvoices()">Invoices</button>
-    <button class="nav-link" data-route="settings" type="button" onclick="openSettings()">Settings</button>
+    <button class="nav-link" data-route="home"      type="button" onclick="openHome()">Home</button>
+    <button class="nav-link" data-route="invoice"   type="button" onclick="goToInvoice()">Editor</button>
+    <button class="nav-link" data-route="invoices"  type="button" onclick="openInvoices()">Invoices</button>
+    <button class="nav-link" data-route="customers" type="button" onclick="openCustomers()">Customers</button>
+    <button class="nav-link" data-route="companies" type="button" onclick="openCompanies()">Companies</button>
+    <button class="nav-link" data-route="financial" type="button" onclick="openFinancial()">Financial</button>
+    <button class="nav-link" data-route="settings"  type="button" onclick="openSettings()">Settings</button>
   </nav>
+  <button class="icon-btn topbar-menu-btn" id="topbar-menu-btn" type="button" onclick="toggleMobileNav()" aria-label="Menu" title="Menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="3" y1="6"  x2="21" y2="6"></line>
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </button>
   <div class="topbar-spacer"></div>
   <div class="topbar-actions">
     <button class="auth-pill" id="supabase-auth-btn" type="button" onclick="openAuthModal()">Local data</button>
@@ -90,6 +101,17 @@
     </div>
   </div>
 </div>
+
+<!-- Mobile slide-down nav drawer. Hidden on desktop via CSS. -->
+<nav class="mobile-nav-drawer" id="mobile-nav-drawer" hidden aria-label="Mobile navigation">
+  <button class="mobile-nav-item" type="button" data-route="home"      onclick="openHome(); closeMobileNav()">Home</button>
+  <button class="mobile-nav-item" type="button" data-route="invoice"   onclick="goToInvoice(); closeMobileNav()">Editor</button>
+  <button class="mobile-nav-item" type="button" data-route="invoices"  onclick="openInvoices(); closeMobileNav()">Invoices</button>
+  <button class="mobile-nav-item" type="button" data-route="customers" onclick="openCustomers(); closeMobileNav()">Customers</button>
+  <button class="mobile-nav-item" type="button" data-route="companies" onclick="openCompanies(); closeMobileNav()">Companies</button>
+  <button class="mobile-nav-item" type="button" data-route="financial" onclick="openFinancial(); closeMobileNav()">Financial</button>
+  <button class="mobile-nav-item" type="button" data-route="settings"  onclick="openSettings(); closeMobileNav()">Settings</button>
+</nav>
 
 <section id="view-invoice">
 <div class="container">
@@ -503,15 +525,18 @@
 <section id="view-customer" hidden>
   <div class="customer-page">
     <header class="invoices-page-head">
-      <button class="settings-back" type="button" onclick="goToInvoiceList()" aria-label="Back to invoices">
+      <button class="settings-back" type="button" onclick="openCustomers()" aria-label="Back to customers">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span>Invoices</span>
+        <span>Customers</span>
       </button>
       <div class="invoices-page-title">
         <h1 id="customer-detail-name">Customer</h1>
         <p id="customer-detail-meta"></p>
+      </div>
+      <div class="invoices-page-actions">
+        <button class="primary-btn" type="button" id="customer-detail-new-btn" onclick="newInvoiceForCurrentCustomer()">+ New invoice</button>
       </div>
     </header>
     <div class="customer-stats" id="customer-stats"></div>
@@ -519,16 +544,115 @@
   </div>
 </section>
 
+<!-- Home (landing page) -->
+<section id="view-home" hidden>
+  <div class="home-page" id="home-page-body"></div>
+</section>
+
+<!-- Customers list page -->
+<section id="view-customers" hidden>
+  <div class="invoices-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="openHome()" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Home</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1>Customers</h1>
+        <p id="customers-list-sub">All your buyers, one view.</p>
+      </div>
+      <div class="invoices-page-actions">
+        <button class="primary-btn" type="button" onclick="newCustomerFromList()">+ New customer</button>
+      </div>
+    </header>
+    <div class="invoices-toolbar">
+      <div class="invoices-search-wrap">
+        <svg class="invoices-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
+        <input id="customers-search" type="search" placeholder="Search name, email, or phone" oninput="renderCustomersPage()">
+      </div>
+      <div class="invoices-sort">
+        <label class="invoices-sort-label" for="customers-sort">Sort</label>
+        <select id="customers-sort" onchange="renderCustomersPage()">
+          <option value="outstanding_desc">Outstanding · high</option>
+          <option value="total_desc">Total invoiced · high</option>
+          <option value="recent_desc">Recent activity</option>
+          <option value="name_asc">Name A→Z</option>
+        </select>
+      </div>
+    </div>
+    <div class="customers-list" id="customers-list" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- Companies list page -->
+<section id="view-companies" hidden>
+  <div class="invoices-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="openHome()" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Home</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1>Companies</h1>
+        <p id="companies-list-sub">Your seller profiles and what they've invoiced.</p>
+      </div>
+      <div class="invoices-page-actions">
+        <button class="primary-btn" type="button" onclick="openSettings('companies')">+ New company</button>
+      </div>
+    </header>
+    <div class="invoices-toolbar">
+      <div class="invoices-search-wrap">
+        <svg class="invoices-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
+        <input id="companies-search" type="search" placeholder="Search name, email, or phone" oninput="renderCompaniesPage()">
+      </div>
+    </div>
+    <div class="customers-list" id="companies-list" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- Company detail view -->
+<section id="view-company" hidden>
+  <div class="customer-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="openCompanies()" aria-label="Back to companies">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Companies</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1 id="company-detail-name">Company</h1>
+        <p id="company-detail-meta"></p>
+      </div>
+      <div class="invoices-page-actions">
+        <button class="primary-btn" type="button" id="company-detail-new-btn" onclick="newInvoiceForCurrentCompany()">+ New invoice</button>
+        <button class="ghost-btn" type="button" id="company-detail-edit-btn" onclick="editCurrentCompanyInSettings()">Edit in settings</button>
+      </div>
+    </header>
+    <div class="customer-stats" id="company-stats"></div>
+    <div class="invoices-list" id="company-invoices-list"></div>
+  </div>
+</section>
+
+<!-- Financial dashboard -->
+<section id="view-financial" hidden>
+  <div class="financial-page" id="financial-page-body"></div>
+</section>
+
 <!-- Settings (full page view) -->
 <section id="view-settings" hidden>
   <div class="settings-page">
 
     <header class="settings-page-head">
-      <button class="settings-back" type="button" onclick="goToInvoice()" aria-label="Back to invoice">
+      <button class="settings-back" type="button" onclick="openHome()" aria-label="Back to home">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span>Invoice</span>
+        <span>Home</span>
       </button>
       <div class="settings-page-title">
         <h1>Settings</h1>

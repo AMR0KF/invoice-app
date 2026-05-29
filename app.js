@@ -342,58 +342,171 @@ function updateActionSummary() {
   }
 }
 
+// Single source of truth for which route the URL currently points to.
+// All route comparisons should go through this — never hand-roll
+// `hash.startsWith(...)` again.
+//
+// Empty hash and `#/` default to HOME (the landing page). The editor is
+// at the explicit `#/editor` route — back buttons return to home, not
+// editor, matching the hub-and-spoke layout.
+function currentRouteName() {
+  const h = location.hash || '';
+  if (h.startsWith('#/editor'))       return 'editor';
+  if (h.startsWith('#/home'))         return 'home';
+  if (h.startsWith('#/customers/'))   return 'customer-detail';
+  if (h.startsWith('#/customers'))    return 'customers';
+  if (h.startsWith('#/companies/'))   return 'company-detail';
+  if (h.startsWith('#/companies'))    return 'companies';
+  if (h.startsWith('#/financial'))    return 'financial';
+  if (h.startsWith('#/invoices'))     return 'invoices';
+  if (h.startsWith('#/settings'))     return 'settings';
+  return 'home';
+}
+
+// Map route → topbar nav-link data-route value (for active highlighting).
+function navHighlightFor(route) {
+  if (route === 'customer-detail') return 'customers';
+  if (route === 'company-detail')  return 'companies';
+  if (route === 'editor')          return 'invoice';
+  return route;
+}
+
+const ALL_VIEW_IDS = [
+  'view-home', 'view-invoice', 'view-invoices', 'view-customers',
+  'view-customer', 'view-companies', 'view-company', 'view-financial',
+  'view-settings',
+];
+
 function routeView() {
-  const hash = (location.hash || '').replace(/^#/, '');
-  const onSettings = hash.startsWith('/settings');
-  const onInvoices = hash.startsWith('/invoices');
-  const onCustomerDetail = hash.startsWith('/customers/');
-  const anchor = hash.split('/')[2] || '';
-  document.getElementById('view-invoice').hidden  = onSettings || onInvoices || onCustomerDetail;
-  document.getElementById('view-settings').hidden = !onSettings;
-  const invoicesEl = document.getElementById('view-invoices');
-  if (invoicesEl) invoicesEl.hidden = !onInvoices;
-  const custEl = document.getElementById('view-customer');
-  if (custEl) custEl.hidden = !onCustomerDetail;
-  document.body.classList.toggle('on-settings', onSettings);
-  document.body.classList.toggle('on-invoices', onInvoices);
-  document.body.classList.toggle('on-customer', onCustomerDetail);
-  document.querySelectorAll('.topbar-nav .nav-link').forEach(el => {
-    let route = 'invoice';
-    if (onSettings) route = 'settings';
-    else if (onInvoices) route = 'invoices';
-    el.classList.toggle('active', el.dataset.route === route);
+  const route = currentRouteName();
+  const hash  = (location.hash || '').replace(/^#/, '');
+  const navRoute = navHighlightFor(route);
+
+  // The editor is the default ('editor') when no hash; everything else
+  // matches its view-* id directly.
+  const visibleId = ({
+    home:            'view-home',
+    editor:          'view-invoice',
+    invoices:        'view-invoices',
+    customers:       'view-customers',
+    'customer-detail': 'view-customer',
+    companies:       'view-companies',
+    'company-detail':  'view-company',
+    financial:       'view-financial',
+    settings:        'view-settings',
+  })[route];
+
+  // Hide everything, then unhide the active view.
+  ALL_VIEW_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = (id !== visibleId);
   });
-  if (onInvoices) {
-    // Show page chrome immediately, then load and render.
+
+  // Body classes (used by responsive CSS that hides chrome on sub-pages).
+  document.body.classList.toggle('on-settings',  route === 'settings');
+  document.body.classList.toggle('on-invoices',  route === 'invoices');
+  document.body.classList.toggle('on-customer',  route === 'customer-detail');
+  document.body.classList.toggle('on-customers', route === 'customers');
+  document.body.classList.toggle('on-companies', route === 'companies' || route === 'company-detail');
+  document.body.classList.toggle('on-financial', route === 'financial');
+  document.body.classList.toggle('on-home',      route === 'home');
+
+  document.querySelectorAll('.topbar-nav .nav-link').forEach(el => {
+    el.classList.toggle('active', el.dataset.route === navRoute);
+  });
+
+  // Per-route work.
+  if (route === 'home') {
+    if (typeof renderHomePage === 'function') renderHomePage();
+    loadInvoices().then(() => { if (typeof renderHomePage === 'function') renderHomePage(); }).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (route === 'invoices') {
     renderInvoicesPage();
     loadInvoices().then(renderInvoicesPage).catch(() => {});
     window.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
-  if (onCustomerDetail) {
+  if (route === 'customers') {
+    if (typeof renderCustomersPage === 'function') renderCustomersPage();
+    loadInvoices().then(() => { if (typeof renderCustomersPage === 'function') renderCustomersPage(); }).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (route === 'customer-detail') {
     const cid = hash.split('/')[2] || '';
     renderCustomerDetail(cid);
     loadInvoices().then(() => renderCustomerDetail(cid)).catch(() => {});
     window.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
-  if (!onSettings) return;
-  loadDocumentSettings();
-  renderSettingsCompanyList();
-  if (settingsCompanyId && companies.some(c => c.id === settingsCompanyId)) {
-    selectSettingsCompany(settingsCompanyId);
-  } else if (companies.length) {
-    selectSettingsCompany(companies[0].id);
-  } else {
-    newSettingsCompany({ silent: true });
+  if (route === 'companies') {
+    if (typeof renderCompaniesPage === 'function') renderCompaniesPage();
+    loadInvoices().then(() => { if (typeof renderCompaniesPage === 'function') renderCompaniesPage(); }).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
   }
-  const target = anchor ? document.querySelector(`[data-section="${anchor}"]`) : null;
-  if (target) target.scrollIntoView({ behavior: 'auto', block: 'start' });
-  else window.scrollTo({ top: 0, behavior: 'auto' });
+  if (route === 'company-detail') {
+    const cid = hash.split('/')[2] || '';
+    if (typeof renderCompanyDetail === 'function') renderCompanyDetail(cid);
+    loadInvoices().then(() => { if (typeof renderCompanyDetail === 'function') renderCompanyDetail(cid); }).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (route === 'financial') {
+    if (typeof renderFinancialPage === 'function') renderFinancialPage();
+    loadInvoices().then(() => { if (typeof renderFinancialPage === 'function') renderFinancialPage(); }).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (route === 'settings') {
+    const anchor = hash.split('/')[2] || '';
+    loadDocumentSettings();
+    renderSettingsCompanyList();
+    if (settingsCompanyId && companies.some(c => c.id === settingsCompanyId)) {
+      selectSettingsCompany(settingsCompanyId);
+    } else if (companies.length) {
+      selectSettingsCompany(companies[0].id);
+    } else {
+      newSettingsCompany({ silent: true });
+    }
+    const target = anchor ? document.querySelector(`[data-section="${anchor}"]`) : null;
+    if (target) target.scrollIntoView({ behavior: 'auto', block: 'start' });
+    else window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  // route === 'editor' — re-render the banner so a stale field /
+  // boundNumber pair gets reconciled (see reconcileEditorBinding).
+  if (typeof renderEditingBanner === 'function') renderEditingBanner();
+  if (typeof renderEditingSaveButton === 'function') renderEditingSaveButton();
 }
 
 function openInvoices() {
   if (location.hash === '#/invoices') routeView(); else location.hash = '#/invoices';
+}
+function openHome() {
+  if (location.hash === '#/home') routeView(); else location.hash = '#/home';
+}
+function openCustomers() {
+  if (location.hash === '#/customers') routeView(); else location.hash = '#/customers';
+}
+function openCompanies() {
+  if (location.hash === '#/companies') routeView(); else location.hash = '#/companies';
+}
+function openFinancial() {
+  if (location.hash === '#/financial') routeView(); else location.hash = '#/financial';
+}
+
+// Mobile slide-down nav drawer.
+function toggleMobileNav() {
+  const d = document.getElementById('mobile-nav-drawer');
+  if (!d) return;
+  d.hidden = !d.hidden;
+}
+function closeMobileNav() {
+  const d = document.getElementById('mobile-nav-drawer');
+  if (d) d.hidden = true;
 }
 
 window.addEventListener('hashchange', routeView);
@@ -413,21 +526,12 @@ function closeSettings() {
   if (!document.getElementById('view-settings').hidden) goToInvoice();
 }
 
-// Always return to the editor regardless of where we came from.
-// Used by: the "Editor" tab on the desktop nav pill, the back buttons on
-// settings / invoices / customer-detail pages, and the mobile gear icon
-// when already on settings. Earlier versions only handled `#/settings`,
-// which silently no-op'd on the new `#/invoices` / `#/customers/<id>`
-// routes — that's the reported "can't get back to the editor" bug.
+// Navigate to the editor (`#/editor`). Used by the topbar Editor tab,
+// back buttons that explicitly want the editor, and the "+ New invoice"
+// flow after seeding the form.
 function goToInvoice() {
-  const hash = location.hash || '';
-  if (hash && hash !== '#/' && hash !== '#') {
-    location.hash = '#/';   // triggers hashchange → routeView() renders editor
-    return;
-  }
-  // Already on the editor route (hash was empty or '#/'); hashchange won't
-  // fire, so render directly. Defensive — shouldn't normally be reached.
-  routeView();
+  if (location.hash === '#/editor') routeView();
+  else location.hash = '#/editor';
 }
 
 function closeSettingsOnBackdrop() { /* retained for legacy onclick handlers */ }
@@ -1280,6 +1384,7 @@ async function saveInvoice(record) {
     date:     record.date,
     due_date: record.due_date || null,
     customer_id: record.customer_id || null,
+    company_id:  record.company_id  || null,
     buyer:    record.buyer || {},
     seller:   record.seller || {},
     total:    Number(record.total) || 0,
@@ -1427,6 +1532,7 @@ function buildInvoiceRecordFromForm(generatedNumber) {
     date:        payload.date,
     due_date:    payload.due_date,
     customer_id: selCustId || null,
+    company_id:  selCompId || null,
     buyer:       payload.buyer,
     seller:      payload.seller,
     total,
@@ -2672,6 +2778,24 @@ async function deleteCurrentInvoice() {
   toast(`${label} deleted`, 'success');
 }
 
+// Defensive check: the inv-num input listener only catches USER-typed
+// changes; programmatic `.value = …` writes bypass it. If we ever render
+// the banner while the field and editor.boundNumber disagree, the binding
+// is stale — unbind so the next Generate doesn't patch the wrong record.
+// Called at the end of renderEditingBanner so every banner render
+// double-checks consistency.
+function reconcileEditorBinding() {
+  if (editor.mode !== 'editing') return false;
+  if (!editor.boundNumber) return false;
+  const fieldValue = (document.getElementById('inv-num')?.value || '').trim();
+  if (!fieldValue) return false;
+  if (fieldValue !== editor.boundNumber) {
+    setEditorMode('new');   // recursive but safe — mode is now 'new', no re-entry
+    return true;
+  }
+  return false;
+}
+
 // "Editing INV-068" banner — visible only when the form is bound to a saved
 // record. The number field stays editable; the banner just labels the link.
 function renderEditingBanner() {
@@ -2679,6 +2803,10 @@ function renderEditingBanner() {
   const num    = document.getElementById('editing-banner-number');
   const delBtn = document.getElementById('editor-delete-btn');
   if (!banner) return;
+  // Defensive: if field and boundNumber disagree, break the binding first.
+  // reconcileEditorBinding() calls setEditorMode('new') which re-enters
+  // this function — the next call will hit the else branch and hide.
+  if (reconcileEditorBinding()) return;
   if (editor.mode === 'editing' && editor.invoiceId && editor.boundNumber) {
     banner.hidden = false;
     if (num) num.textContent = editor.boundNumber;
@@ -2830,7 +2958,12 @@ function goToCustomerForCurrentBuyer() {
   toast('Save this client first to see their history', 'error');
 }
 
+// Tracks the currently-viewed customer detail. Used by the "+ New
+// invoice for this customer" button on the detail page.
+let _currentCustomerDetailId = null;
+
 function renderCustomerDetail(customerId) {
+  _currentCustomerDetailId = customerId;
   const cust = (customers || []).find(c => c.id === customerId);
   const invs = (invoices || []).filter(r => r.customer_id === customerId);
   document.getElementById('customer-detail-name').textContent = cust?.name || 'Customer';
@@ -2862,10 +2995,692 @@ function renderCustomerDetail(customerId) {
   list.innerHTML = invs.map(rowHtml).join('');
 }
 
+// "+ New invoice" button on the customer detail page.
+async function newInvoiceForCurrentCustomer() {
+  if (!_currentCustomerDetailId) { toast('No customer selected', 'error'); return; }
+  await startNewInvoiceForCustomer(_currentCustomerDetailId);
+}
+
+// Seed the editor with a saved customer's contact details, then route
+// to the editor. Used by detail-page action button + can be reused by
+// future "duplicate to same customer" flows.
+async function startNewInvoiceForCustomer(customerId) {
+  await startNewInvoice();
+  const c = (customers || []).find(x => x.id === customerId);
+  if (!c) { goToInvoice(); return; }
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+  set('b-name',  c.name);
+  set('b-addr',  c.address);
+  set('b-phone', c.phone);
+  set('b-email', c.email);
+  set('b-net-terms', c.net_terms_days ?? 30);
+  selCustId = customerId;
+  if (typeof recalc === 'function') recalc();
+  goToInvoice();
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// CUSTOMERS LIST PAGE — every saved buyer with totals + status mix
+// ──────────────────────────────────────────────────────────────────────
+
+// Per-customer rollup from the invoices list. Returns
+// { totalInvoiced, outstanding, lastDate, byStatus: {draft, issued, paid, overdue, void}, currency }.
+function customerRollup(customerId) {
+  const invs = (invoices || []).filter(r => r.customer_id === customerId);
+  const byStatus = { draft: 0, issued: 0, paid: 0, overdue: 0, void: 0 };
+  let totalInvoiced = 0;
+  let outstanding = 0;
+  let lastDate = '';
+  let currency = 'USD';
+  invs.forEach(r => {
+    const eff = effectiveInvoiceStatus(r);
+    byStatus[eff] = (byStatus[eff] || 0) + 1;
+    if (eff !== 'void') {
+      totalInvoiced += Number(r.total) || 0;
+      if (eff === 'issued' || eff === 'overdue') outstanding += Number(r.total) || 0;
+    }
+    if (r.date && r.date > lastDate) lastDate = r.date;
+    if (r.currency) currency = r.currency;
+  });
+  return { totalInvoiced, outstanding, lastDate, byStatus, currency, count: invs.length };
+}
+
+function renderCustomersPage() {
+  const list = document.getElementById('customers-list');
+  if (!list) return;
+  const search = (document.getElementById('customers-search')?.value || '').trim().toLowerCase();
+  const sort   = document.getElementById('customers-sort')?.value || 'outstanding_desc';
+
+  let rows = (customers || []).map(c => ({ ...c, _r: customerRollup(c.id) }));
+  if (search) {
+    rows = rows.filter(c => {
+      const hay = `${c.name || ''} ${c.email || ''} ${c.phone || ''}`.toLowerCase();
+      return hay.includes(search);
+    });
+  }
+  rows.sort((a, b) => {
+    if (sort === 'name_asc')         return (a.name || '').localeCompare(b.name || '');
+    if (sort === 'total_desc')       return b._r.totalInvoiced - a._r.totalInvoiced;
+    if (sort === 'recent_desc')      return String(b._r.lastDate).localeCompare(String(a._r.lastDate));
+    return b._r.outstanding - a._r.outstanding;   // outstanding_desc (default)
+  });
+
+  const sub = document.getElementById('customers-list-sub');
+  if (sub) sub.textContent = `${customers.length} customer${customers.length === 1 ? '' : 's'} · ${rows.length} shown`;
+
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="invoices-empty">
+      <strong>${customers.length === 0 ? 'No customers saved yet.' : 'No matches.'}</strong><br>
+      ${customers.length === 0 ? 'Save a buyer from the editor to populate this list.' : 'Adjust the search.'}
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map(c => {
+    const r = c._r;
+    const mixHtml = ['paid', 'issued', 'overdue', 'draft'].map(s => {
+      const n = r.byStatus[s] || 0;
+      if (!n) return '';
+      return `<span class="chip">${n} ${s}</span>`;
+    }).filter(Boolean).join('');
+    const outstandingClass = r.outstanding > 0 ? 'outstanding' : 'zero';
+    return `
+      <div class="customer-card" onclick="goToCustomer('${escapeHtml(c.id)}')">
+        <div class="customer-card-name">
+          <strong>${escapeHtml(c.name || '(unnamed)')}</strong>
+          <span class="meta">${escapeHtml([c.email, c.phone].filter(Boolean).join(' · ') || '—')}</span>
+        </div>
+        <div class="customer-card-num">
+          <span class="label">Total</span>
+          <span class="value">${fmtMoney(r.totalInvoiced, r.currency)}</span>
+        </div>
+        <div class="customer-card-num">
+          <span class="label">Outstanding</span>
+          <span class="value ${outstandingClass}">${fmtMoney(r.outstanding, r.currency)}</span>
+        </div>
+        <div class="customer-card-mix">${mixHtml || `<span class="chip">${r.count} total</span>`}</div>
+        <div class="customer-card-actions" onclick="event.stopPropagation()">
+          <button class="ghost-btn" type="button" onclick="startNewInvoiceForCustomer('${escapeHtml(c.id)}')">+ Invoice</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// "+ New customer" button on the customers list — open a blank editor
+// with focus in the buyer name field so the user can type and save.
+async function newCustomerFromList() {
+  await startNewInvoice();
+  goToInvoice();
+  setTimeout(() => {
+    document.getElementById('b-name')?.focus();
+  }, 50);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// COMPANIES LIST + DETAIL — pivot invoices by seller company
+// ──────────────────────────────────────────────────────────────────────
+
+// Match invoices to a company. Primary key is company_id (set by new
+// records after the schema migration). Older rows without it fall back
+// to fuzzy name match on payload.seller.name. Match is case-insensitive
+// trim — sufficient for display, never used as a write key.
+function invoicesForCompany(company) {
+  const id = company?.id;
+  const nameKey = (company?.name || '').trim().toLowerCase();
+  return (invoices || []).filter(r => {
+    if (id && r.company_id === id) return true;
+    if (r.company_id) return false;   // explicitly linked elsewhere
+    if (!nameKey) return false;
+    const sellerName = String(r.payload?.seller?.name || r.seller?.name || '').trim().toLowerCase();
+    return sellerName === nameKey;
+  });
+}
+
+function companyRollup(company) {
+  const invs = invoicesForCompany(company);
+  const byStatus = { draft: 0, issued: 0, paid: 0, overdue: 0, void: 0 };
+  let totalBilled = 0;
+  let outstanding = 0;
+  let lastDate = '';
+  let currency = 'USD';
+  invs.forEach(r => {
+    const eff = effectiveInvoiceStatus(r);
+    byStatus[eff] = (byStatus[eff] || 0) + 1;
+    if (eff !== 'void') {
+      totalBilled += Number(r.total) || 0;
+      if (eff === 'issued' || eff === 'overdue') outstanding += Number(r.total) || 0;
+    }
+    if (r.date && r.date > lastDate) lastDate = r.date;
+    if (r.currency) currency = r.currency;
+  });
+  return { totalBilled, outstanding, lastDate, byStatus, currency, count: invs.length, invs };
+}
+
+function renderCompaniesPage() {
+  const list = document.getElementById('companies-list');
+  if (!list) return;
+  const search = (document.getElementById('companies-search')?.value || '').trim().toLowerCase();
+
+  let rows = (companies || []).map(c => ({ ...c, _r: companyRollup(c) }));
+  if (search) {
+    rows = rows.filter(c => {
+      const hay = `${c.name || ''} ${c.email || ''} ${c.phone || ''}`.toLowerCase();
+      return hay.includes(search);
+    });
+  }
+  rows.sort((a, b) => b._r.totalBilled - a._r.totalBilled);
+
+  const sub = document.getElementById('companies-list-sub');
+  if (sub) sub.textContent = `${companies.length} company profile${companies.length === 1 ? '' : 's'} · ${rows.length} shown`;
+
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="invoices-empty">
+      <strong>${companies.length === 0 ? 'No companies saved yet.' : 'No matches.'}</strong><br>
+      ${companies.length === 0 ? 'Add a seller profile in Settings → Companies.' : 'Adjust the search.'}
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map(c => {
+    const r = c._r;
+    const mixHtml = ['paid', 'issued', 'overdue', 'draft'].map(s => {
+      const n = r.byStatus[s] || 0;
+      if (!n) return '';
+      return `<span class="chip">${n} ${s}</span>`;
+    }).filter(Boolean).join('');
+    const outstandingClass = r.outstanding > 0 ? 'outstanding' : 'zero';
+    return `
+      <div class="customer-card" onclick="goToCompany('${escapeHtml(c.id)}')">
+        <div class="customer-card-name">
+          <strong>${escapeHtml(c.name || '(unnamed)')}</strong>
+          <span class="meta">${escapeHtml([c.email, c.phone].filter(Boolean).join(' · ') || '—')}</span>
+        </div>
+        <div class="customer-card-num">
+          <span class="label">Billed</span>
+          <span class="value">${fmtMoney(r.totalBilled, r.currency)}</span>
+        </div>
+        <div class="customer-card-num">
+          <span class="label">Outstanding</span>
+          <span class="value ${outstandingClass}">${fmtMoney(r.outstanding, r.currency)}</span>
+        </div>
+        <div class="customer-card-mix">${mixHtml || `<span class="chip">${r.count} total</span>`}</div>
+        <div class="customer-card-actions" onclick="event.stopPropagation()">
+          <button class="ghost-btn" type="button" onclick="startNewInvoiceForCompany('${escapeHtml(c.id)}')">+ Invoice</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function goToCompany(companyId) {
+  if (!companyId) return;
+  location.hash = '#/companies/' + encodeURIComponent(companyId);
+}
+
+// Tracks the currently-viewed company detail. Used by the "+ New
+// invoice" button on the detail page.
+let _currentCompanyDetailId = null;
+
+function renderCompanyDetail(companyId) {
+  _currentCompanyDetailId = companyId;
+  const company = (companies || []).find(c => c.id === companyId);
+  const r = companyRollup(company);
+  document.getElementById('company-detail-name').textContent = company?.name || 'Company';
+  document.getElementById('company-detail-meta').textContent = company
+    ? [company.email, company.phone].filter(Boolean).join(' · ')
+    : '';
+  const stats = document.getElementById('company-stats');
+  const list  = document.getElementById('company-invoices-list');
+  const paidWithDate = r.invs.filter(x => x.status === 'paid' && x.paid_at && x.date);
+  let avgDaysToPay = '—';
+  if (paidWithDate.length) {
+    const sum = paidWithDate.reduce((s, x) =>
+      s + Math.max(0, Math.floor((new Date(x.paid_at) - new Date(x.date + 'T00:00:00')) / 864e5)), 0);
+    avgDaysToPay = Math.round(sum / paidWithDate.length) + ' days';
+  }
+  stats.innerHTML = `
+    <div class="customer-stat"><span class="label">Total billed</span><span class="value">${fmtMoney(r.totalBilled, r.currency)}</span></div>
+    <div class="customer-stat"><span class="label">Outstanding</span><span class="value outstanding">${fmtMoney(r.outstanding, r.currency)}</span></div>
+    <div class="customer-stat"><span class="label">Invoices</span><span class="value">${r.count}</span></div>
+    <div class="customer-stat"><span class="label">Avg days to pay</span><span class="value">${avgDaysToPay}</span></div>`;
+  if (r.invs.length === 0) {
+    list.innerHTML = `<div class="invoices-empty"><strong>No invoices issued from this company yet.</strong></div>`;
+    return;
+  }
+  list.innerHTML = r.invs.map(rowHtml).join('');
+}
+
+async function newInvoiceForCurrentCompany() {
+  if (!_currentCompanyDetailId) { toast('No company selected', 'error'); return; }
+  await startNewInvoiceForCompany(_currentCompanyDetailId);
+}
+
+async function startNewInvoiceForCompany(companyId) {
+  await startNewInvoice();
+  const c = (companies || []).find(x => x.id === companyId);
+  if (!c) { goToInvoice(); return; }
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+  set('s-name',  c.name);
+  set('s-addr',  c.address);
+  set('s-phone', c.phone);
+  set('s-email', c.email);
+  const indChk = document.getElementById('chk-individual-disclaimer');
+  if (indChk) indChk.checked = !!c.individual_disclaimer;
+  selCompId = companyId;
+  if (typeof recalc === 'function') recalc();
+  goToInvoice();
+}
+
+function editCurrentCompanyInSettings() {
+  if (!_currentCompanyDetailId) { toast('No company selected', 'error'); return; }
+  settingsCompanyId = _currentCompanyDetailId;
+  openSettings('companies');
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FINANCIAL DASHBOARD — totals, monthly breakdown, top customers
+// ──────────────────────────────────────────────────────────────────────
+
+const FINANCIAL_PERIOD_KEY = 'inv_financial_period';
+
+function getFinancialPeriodChoice() {
+  return localStorage.getItem(FINANCIAL_PERIOD_KEY) || 'year';
+}
+function setFinancialPeriodChoice(value) {
+  localStorage.setItem(FINANCIAL_PERIOD_KEY, value);
+}
+
+// Translate a period selector value into a {from, to} ISO date pair.
+// Both bounds are inclusive. `null` means unbounded on that side.
+function resolveFinancialPeriod(choice) {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const pad = (n) => String(n).padStart(2, '0');
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const firstOfMonth = (year, month) => iso(new Date(year, month, 1));
+  const lastOfMonth  = (year, month) => iso(new Date(year, month + 1, 0));
+  switch (choice) {
+    case 'month':       return { from: firstOfMonth(y, m),     to: lastOfMonth(y, m),     label: 'This month' };
+    case 'last_month':  return { from: firstOfMonth(y, m - 1), to: lastOfMonth(y, m - 1), label: 'Last month' };
+    case 'quarter': {
+      const qStart = Math.floor(m / 3) * 3;
+      return { from: firstOfMonth(y, qStart), to: lastOfMonth(y, qStart + 2), label: 'This quarter' };
+    }
+    case 'all':         return { from: null, to: null, label: 'All time' };
+    case 'year':
+    default:            return { from: `${y}-01-01`, to: `${y}-12-31`, label: 'This year' };
+  }
+}
+
+function invoicesInPeriod(period) {
+  return (invoices || []).filter(r => {
+    if (!r.date) return false;
+    if (period.from && r.date < period.from) return false;
+    if (period.to   && r.date > period.to)   return false;
+    return true;
+  });
+}
+
+// Sum non-voided invoices in the period, by currency.
+function financialTotalsByCurrency(period) {
+  const rows = invoicesInPeriod(period);
+  const out = {};
+  rows.forEach(inv => {
+    const eff = effectiveInvoiceStatus(inv);
+    if (eff === 'void') return;
+    const cur = inv.currency || 'USD';
+    const total = Number(inv.total) || 0;
+    if (!out[cur]) out[cur] = { total: 0, paid: 0, outstanding: 0, overdue: 0, count: 0 };
+    out[cur].total += total;
+    out[cur].count += 1;
+    if (eff === 'paid') out[cur].paid += total;
+    if (eff === 'issued' || eff === 'overdue') out[cur].outstanding += total;
+    if (eff === 'overdue') out[cur].overdue += total;
+  });
+  return out;
+}
+
+// Group invoices by year-month within the period, summing paid +
+// outstanding per currency. Returns array sorted desc by month.
+function monthlyBreakdown(period) {
+  const rows = invoicesInPeriod(period);
+  const buckets = new Map();   // key 'YYYY-MM' → { paid: {USD: 0...}, outstanding: {...} }
+  rows.forEach(inv => {
+    const eff = effectiveInvoiceStatus(inv);
+    if (eff === 'void') return;
+    const month = (inv.date || '').slice(0, 7);   // YYYY-MM
+    if (!month) return;
+    if (!buckets.has(month)) buckets.set(month, { paid: {}, outstanding: {} });
+    const b = buckets.get(month);
+    const cur = inv.currency || 'USD';
+    const total = Number(inv.total) || 0;
+    if (eff === 'paid') b.paid[cur] = (b.paid[cur] || 0) + total;
+    if (eff === 'issued' || eff === 'overdue') b.outstanding[cur] = (b.outstanding[cur] || 0) + total;
+  });
+  const out = Array.from(buckets.entries()).map(([month, b]) => ({ month, ...b }));
+  out.sort((a, b) => b.month.localeCompare(a.month));
+  return out;
+}
+
+// Top N buyers by total billed in the period (non-void only).
+function topCustomersInPeriod(period, limit = 10) {
+  const rows = invoicesInPeriod(period);
+  const buckets = new Map();   // key (customer_id || name) → { name, totals: {cur: 0}, count }
+  rows.forEach(inv => {
+    const eff = effectiveInvoiceStatus(inv);
+    if (eff === 'void') return;
+    const name = inv.buyer?.name || '(no buyer)';
+    const key = inv.customer_id || `name:${name.toLowerCase()}`;
+    if (!buckets.has(key)) buckets.set(key, { name, customerId: inv.customer_id, totals: {}, count: 0 });
+    const b = buckets.get(key);
+    const cur = inv.currency || 'USD';
+    const total = Number(inv.total) || 0;
+    b.totals[cur] = (b.totals[cur] || 0) + total;
+    b.count += 1;
+  });
+  const arr = Array.from(buckets.values());
+  arr.sort((a, b) => {
+    const aSum = Object.values(a.totals).reduce((s, x) => s + x, 0);
+    const bSum = Object.values(b.totals).reduce((s, x) => s + x, 0);
+    return bSum - aSum;
+  });
+  return arr.slice(0, limit);
+}
+
+function monthLabel(yyyyMm) {
+  const [y, m] = yyyyMm.split('-').map(Number);
+  if (!y || !m) return yyyyMm;
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${names[m - 1]} ${y}`;
+}
+
+function renderFinancialPage() {
+  const body = document.getElementById('financial-page-body');
+  if (!body) return;
+  const choice = getFinancialPeriodChoice();
+  const period = resolveFinancialPeriod(choice);
+  const totals = financialTotalsByCurrency(period);
+  const currencies = Object.keys(totals);
+  const monthly = monthlyBreakdown(period);
+  const topCustomers = topCustomersInPeriod(period, 10);
+
+  // Tiles — show per-currency rows when more than one currency is in use.
+  const tile = (label, getValue, klass = '') => {
+    if (currencies.length === 0) {
+      return `<div class="financial-tile ${klass}"><span class="label">${label}</span><div class="amounts"><span class="amount muted">—</span></div></div>`;
+    }
+    const amounts = currencies.map(cur => `<span class="amount">${fmtMoney(getValue(cur), cur)}</span>`).join('');
+    return `<div class="financial-tile ${klass}"><span class="label">${label}</span><div class="amounts">${amounts}</div></div>`;
+  };
+
+  const tilesHtml = `
+    <div class="financial-tiles">
+      ${tile('Total',       cur => totals[cur].total)}
+      ${tile('Paid',        cur => totals[cur].paid,        'paid')}
+      ${tile('Outstanding', cur => totals[cur].outstanding, 'outstanding')}
+      ${tile('Overdue',     cur => totals[cur].overdue,     'overdue')}
+    </div>`;
+
+  let monthlyHtml;
+  if (monthly.length === 0) {
+    monthlyHtml = `<div class="financial-empty">No invoices in this period.</div>`;
+  } else {
+    monthlyHtml = `<div class="financial-rows">${monthly.map(m => {
+      const paidStr = Object.entries(m.paid).map(([c, v]) => fmtMoney(v, c)).join(' · ') || '—';
+      const outStr  = Object.entries(m.outstanding).map(([c, v]) => fmtMoney(v, c)).join(' · ') || '—';
+      return `
+        <div class="financial-row">
+          <span class="row-label">${monthLabel(m.month)}</span>
+          <span class="row-amounts">
+            <span class="paid">${paidStr} paid</span>
+            <span class="outstanding">${outStr} outstanding</span>
+          </span>
+        </div>`;
+    }).join('')}</div>`;
+  }
+
+  let topHtml;
+  if (topCustomers.length === 0) {
+    topHtml = `<div class="financial-empty">No buyers in this period.</div>`;
+  } else {
+    topHtml = `<div class="financial-rows">${topCustomers.map((c, i) => {
+      const totalStr = Object.entries(c.totals).map(([cur, v]) => fmtMoney(v, cur)).join(' · ');
+      const clickAttr = c.customerId
+        ? `onclick="goToCustomer('${escapeHtml(c.customerId)}')" style="cursor:pointer"`
+        : '';
+      return `
+        <div class="financial-row" ${clickAttr}>
+          <span class="row-label">${i + 1}. ${escapeHtml(c.name)}</span>
+          <span class="row-amounts">
+            <span>${totalStr}</span>
+            <span style="color:var(--text3); font-weight:400">${c.count} invoice${c.count === 1 ? '' : 's'}</span>
+          </span>
+        </div>`;
+    }).join('')}</div>`;
+  }
+
+  let byCurrencyHtml = '';
+  if (currencies.length > 0) {
+    byCurrencyHtml = `
+      <section class="financial-section">
+        <h3>By currency</h3>
+        <div class="financial-rows">${currencies.map(cur => `
+          <div class="financial-row">
+            <span class="row-label">${escapeHtml(cur)}</span>
+            <span class="row-amounts">
+              <span>${fmtMoney(totals[cur].total, cur)}</span>
+              <span style="color:var(--text3); font-weight:400">${totals[cur].count} invoice${totals[cur].count === 1 ? '' : 's'}</span>
+            </span>
+          </div>`).join('')}</div>
+      </section>`;
+  }
+
+  body.innerHTML = `
+    <header class="financial-head">
+      <h1>Financial overview</h1>
+      <div class="financial-period">
+        <select id="financial-period-select" onchange="onFinancialPeriodChange()">
+          <option value="month">This month</option>
+          <option value="last_month">Last month</option>
+          <option value="quarter">This quarter</option>
+          <option value="year">This year</option>
+          <option value="all">All time</option>
+        </select>
+      </div>
+    </header>
+
+    ${tilesHtml}
+
+    <section class="financial-section">
+      <h3>Monthly breakdown · ${escapeHtml(period.label)}</h3>
+      ${monthlyHtml}
+    </section>
+
+    <section class="financial-section">
+      <h3>Top customers · ${escapeHtml(period.label)}</h3>
+      ${topHtml}
+    </section>
+
+    ${byCurrencyHtml}
+  `;
+
+  // Restore the selected period in the dropdown (innerHTML replaced it).
+  const sel = document.getElementById('financial-period-select');
+  if (sel) sel.value = choice;
+}
+
+function onFinancialPeriodChange() {
+  const sel = document.getElementById('financial-period-select');
+  if (!sel) return;
+  setFinancialPeriodChoice(sel.value);
+  renderFinancialPage();
+}
+
 // Mobile gear-equivalent for the list icon.
 function toggleInvoicesRoute() {
   if (location.hash.startsWith('#/invoices')) goToInvoice();
   else openInvoices();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// HOME PAGE — landing dashboard with tiles + recent activity
+// ─────────────────────────────────────────────────────────────────────────
+
+// Sum non-voided invoices, bucketed by currency.
+// Returns { [currency]: { total, paid, outstanding, overdue, count } }.
+function summarizeAllInvoices(list) {
+  const out = {};
+  (list || []).forEach(inv => {
+    const eff = effectiveInvoiceStatus(inv);
+    if (eff === 'void') return;
+    const cur = inv.currency || 'USD';
+    const total = Number(inv.total) || 0;
+    if (!out[cur]) out[cur] = { total: 0, paid: 0, outstanding: 0, overdue: 0, count: 0 };
+    out[cur].total += total;
+    out[cur].count += 1;
+    if (eff === 'paid') out[cur].paid += total;
+    if (eff === 'issued' || eff === 'overdue') out[cur].outstanding += total;
+    if (eff === 'overdue') out[cur].overdue += total;
+  });
+  return out;
+}
+
+// Top N most recent history events across the invoice list.
+// Returns [{at, from, to, inv}] sorted by `at` desc.
+function recentActivity(list, limit = 6) {
+  const events = [];
+  (list || []).forEach(inv => {
+    const history = Array.isArray(inv.history) ? inv.history : [];
+    history.forEach(h => {
+      if (!h?.at) return;
+      events.push({ at: h.at, from: h.from || '', to: h.to || '', inv });
+    });
+  });
+  events.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return events.slice(0, limit);
+}
+
+function humanTimeAgo(iso) {
+  if (!iso) return '';
+  const then = new Date(iso);
+  if (isNaN(then)) return '';
+  const diff = (Date.now() - then.getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 86400 * 2) return 'yesterday';
+  if (diff < 86400 * 30) return `${Math.floor(diff / 86400)} days ago`;
+  return iso.slice(0, 10);
+}
+
+function homeTileSvg(name) {
+  // Tiny inline icons — matches the topbar SVG style (stroke-only, 1.7w).
+  const ICONS = {
+    plus:     '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    list:     '<line x1="8" y1="6"  x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+    user:     '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
+    briefcase:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    chart:    '<line x1="4" y1="20" x2="20" y2="20"/><line x1="6" y1="16" x2="6" y2="11"/><line x1="11" y1="16" x2="11" y2="7"/><line x1="16" y1="16" x2="16" y2="13"/>',
+    gear:     '<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.2-1.7l2-1.5-2-3.4-2.3.9a7 7 0 0 0-3-1.7L13 2h-2l-.5 2.6a7 7 0 0 0-3 1.7L5.2 5.4l-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .6.1 1.1.2 1.7l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 3 1.7L11 22h2l.5-2.6a7 7 0 0 0 3-1.7l2.3.9 2-3.4-2-1.5c.1-.6.2-1.1.2-1.7Z"/>',
+  };
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+}
+
+function renderHomePage() {
+  const body = document.getElementById('home-page-body');
+  if (!body) return;
+  const summary = summarizeAllInvoices(invoices);
+  const currencies = Object.keys(summary);
+  const isSignedIn = supabaseActive();
+  const greeting = isSignedIn ? authDisplayName() : 'there';
+
+  // Hero stat line — pick the dominant currency, or compact "n invoices"
+  // when nothing is recorded yet.
+  let heroStats = '';
+  if (currencies.length === 0) {
+    heroStats = `<div class="home-hero-stats"><span>No invoices yet — generate one to get started.</span></div>`;
+  } else {
+    const primary = currencies.sort((a, b) => summary[b].total - summary[a].total)[0];
+    const s = summary[primary];
+    const totalCount = currencies.reduce((sum, c) => sum + summary[c].count, 0);
+    heroStats = `
+      <div class="home-hero-stats">
+        <span><strong>${totalCount}</strong> invoice${totalCount === 1 ? '' : 's'}</span>
+        <span class="sep">·</span>
+        <span><strong>${fmtMoney(s.outstanding, primary)}</strong> outstanding</span>
+        ${s.overdue > 0 ? `<span class="sep">·</span><span style="color:#dc2626"><strong>${fmtMoney(s.overdue, primary)}</strong> overdue</span>` : ''}
+        ${currencies.length > 1 ? `<span class="sep">·</span><span style="color:var(--text3)">+${currencies.length - 1} other currency</span>` : ''}
+      </div>`;
+  }
+
+  // Activity list — last 6 status changes.
+  const events = recentActivity(invoices, 6);
+  let activityHtml;
+  if (events.length === 0) {
+    activityHtml = `<div class="home-activity-empty">No activity yet. Status changes will appear here.</div>`;
+  } else {
+    activityHtml = `<div class="home-activity-list">${events.map(e => {
+      const num = escapeHtml(e.inv.number || '');
+      const buyer = escapeHtml(e.inv.buyer?.name || '');
+      const dest = encodeURIComponent(e.inv.id || '');
+      return `
+        <a class="home-activity-item" href="javascript:void(0)" onclick="openInvoiceFromList('${dest}')">
+          <span class="dot"></span>
+          <span><strong>${num}</strong> → ${escapeHtml(e.to)}${buyer ? ` · ${buyer}` : ''}</span>
+          <span class="when">${escapeHtml(humanTimeAgo(e.at))}</span>
+        </a>`;
+    }).join('')}</div>`;
+  }
+
+  body.innerHTML = `
+    <section class="home-hero">
+      <h2>Hi ${escapeHtml(greeting)}.</h2>
+      ${heroStats}
+    </section>
+
+    <div class="home-tile-grid">
+      <button class="home-tile primary" type="button" onclick="newInvoiceFromHome()">
+        <span class="home-tile-icon">${homeTileSvg('plus')}</span>
+        <h3>New invoice</h3>
+        <p>Start a fresh draft and generate a PDF.</p>
+      </button>
+      <button class="home-tile" type="button" onclick="openInvoices()">
+        <span class="home-tile-icon">${homeTileSvg('list')}</span>
+        <h3>Invoices</h3>
+        <p>All drafts, issued, paid, and overdue.</p>
+      </button>
+      <button class="home-tile" type="button" onclick="openCustomers()">
+        <span class="home-tile-icon">${homeTileSvg('user')}</span>
+        <h3>Customers</h3>
+        <p>Buyer list with outstanding totals.</p>
+      </button>
+      <button class="home-tile" type="button" onclick="openCompanies()">
+        <span class="home-tile-icon">${homeTileSvg('briefcase')}</span>
+        <h3>Companies</h3>
+        <p>Your seller profiles and what they've issued.</p>
+      </button>
+      <button class="home-tile" type="button" onclick="openFinancial()">
+        <span class="home-tile-icon">${homeTileSvg('chart')}</span>
+        <h3>Financial</h3>
+        <p>Outstanding, paid, overdue — at a glance.</p>
+      </button>
+      <button class="home-tile" type="button" onclick="openSettings()">
+        <span class="home-tile-icon">${homeTileSvg('gear')}</span>
+        <h3>Settings</h3>
+        <p>Workspace defaults and seller profiles.</p>
+      </button>
+    </div>
+
+    <section class="home-section">
+      <h3>Recent activity</h3>
+      ${activityHtml}
+    </section>`;
+}
+
+// "+ New invoice" tile on home — clear the editor then route to it.
+async function newInvoiceFromHome() {
+  await startNewInvoice();
+  goToInvoice();
 }
 
 // Preload invoices on boot so the list is ready when opened. Wrapped so a
