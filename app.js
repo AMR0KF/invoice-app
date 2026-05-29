@@ -39,6 +39,11 @@ let currentInvoicePaidDate = null;    // ISO date string when status === 'paid'
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  // Route IMMEDIATELY so the right view (home, editor, ...) is visible
+  // before any network calls. Without this, a slow Supabase init keeps
+  // the user staring at whichever view is first in the HTML.
+  routeView();
+
   // Set today's date
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('inv-date').value = today;
