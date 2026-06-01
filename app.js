@@ -44,34 +44,41 @@ let editingDraftId = null;
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  // Route IMMEDIATELY so the right view (home, editor, ...) is visible
-  // before any network calls. Without this, a slow Supabase init keeps
-  // the user staring at whichever view is first in the HTML.
-  routeView();
-
-  // Drafts v2 storage: hydrate the in-memory map, then promote / clean
-  // up any legacy inv_draft_v1 payload (idempotent).
+  // Hydrate drafts v2 FIRST so a direct hit on #/drafts/<id> finds its
+  // record in the same tick. Without this, the first routeView sees
+  // drafts={} and bindEditorToDraft redirects to a freshly-minted id,
+  // which (because location.hash = X queues a hashchange instead of
+  // re-running synchronously) leaves the page in an unresolved state
+  // until the await chain below completes — long enough for the user
+  // to see a blank form.
   loadDrafts();
   migrateLegacyDraftIfNeeded();
 
-  // Set today's date (used by the editor when a draft is opened).
+  // Set today's date + seed one empty line item BEFORE routing so the
+  // editor view has visible structure when it's unhidden.
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('inv-date').value = today;
   document.getElementById('inv-due').value  = new Date(Date.now() + 7*864e5).toISOString().split('T')[0];
   loadDocumentSettings();
   renderItemHistoryDatalist();
-
-  await initSupabaseAuth();
   toggleDiscount();
   if (!rowCount) addRow();
-  // Always load invoices early — Home, Drafts, and the Issue action's
-  // next-number compute all depend on it.
+
+  // Wire input listeners before routing so any typing the user does
+  // while async work is in flight is captured.
+  wireDraftAutosave();
+
+  // Route now — drafts + form structure are ready. The right view
+  // appears immediately; any data that comes later (invoices,
+  // customers, companies) re-renders via the trailing routeView().
+  routeView();
+
+  await initSupabaseAuth();
   await loadInvoices().catch(() => {});
   if (supabaseActive()) {
     await loadCompanies();
     await loadCustomers();
   }
-  wireDraftAutosave();
   // Final routeView after all async work — re-renders the active view
   // with the now-loaded data (especially Home's hero stats).
   routeView();
@@ -2277,9 +2284,18 @@ function migrateLegacyDraftIfNeeded() {
 function bindEditorToDraft(local_id) {
   let d = getDraft(local_id);
   if (!d) {
+    // Stale URL or freshly-typed hash — mint a new draft and rewrite
+    // the URL in place. `history.replaceState` avoids a queued
+    // hashchange that would race the rest of this function; we
+    // proceed to bind synchronously so the form is rendered in one
+    // tick, no blank flash.
     d = newDraft({});
-    location.hash = '#/drafts/' + encodeURIComponent(d.local_id);
-    return;   // hashchange will re-invoke routeView with the right id
+    try {
+      history.replaceState(null, '', '#/drafts/' + encodeURIComponent(d.local_id));
+    } catch {
+      // Older browsers without replaceState fall back to a hash assign.
+      location.hash = '#/drafts/' + encodeURIComponent(d.local_id);
+    }
   }
   editingDraftId = d.local_id;
   currentInvoiceStatus = 'draft';
