@@ -2947,3 +2947,100 @@ body.light-theme .home-tile.primary {
 }
 body.light-theme .financial-row:nth-child(odd) { background: #f8fafc; }
 body.light-theme .mobile-nav-drawer { background: #ffffff; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Draft-edit mode (route #/drafts/<id>)
+   ────────────────────────────────────────────────────────────────────*/
+/* Read-only inv-num field: visually muted so the user understands the
+   number is a preview, not a free-form input. The actual assignment
+   happens at issuance. */
+.draft-num-readonly {
+  background: var(--surface) !important;
+  color: var(--text2) !important;
+  font-style: italic;
+  cursor: not-allowed;
+  user-select: all;
+}
+.draft-num-readonly:focus { outline: none; box-shadow: none; }
+body.light-theme .draft-num-readonly { background: #f1f5f9 !important; }
+
+/* Issue card replaces the legacy Generate button in v2 draft-edit mode. */
+.issue-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface2));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+.issue-card-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text2);
+}
+.issue-card-line strong {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+.issue-card-label { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+.issue-btn {
+  width: 100%;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.issue-btn:hover { background: var(--accent2); border-color: var(--accent2); }
+.issue-btn:disabled { opacity: .65; cursor: not-allowed; }
+body.light-theme .issue-card {
+  background: color-mix(in srgb, var(--accent) 10%, #ffffff);
+}
+
+/* In draft-edit mode the legacy "Invoice status" sidebar block is
+   replaced by a draft-specific status section. The legacy buttons are
+   hidden via a data-attr toggle set by refreshDraftEditorChrome. */
+#invoice-status-section[data-draft-mode="1"] .status-actions,
+#invoice-status-section[data-draft-mode="1"] .status-side-actions,
+#invoice-status-section[data-draft-mode="1"] .editing-banner {
+  display: none !important;
+}
+#invoice-status-section[data-draft-mode="1"] .status-row .status-meta::before {
+  content: "Draft — number assigned at issuance";
+  color: var(--text3);
+  font-size: 11.5px;
+}
+
+/* Invoice detail (read-only) — body.viewing-invoice. Disable every
+   editable control inside the editor view; the action bar lives in
+   the side status section which renderInvoiceDetail rebuilds. */
+body.viewing-invoice #view-invoice input,
+body.viewing-invoice #view-invoice textarea,
+body.viewing-invoice #view-invoice select {
+  pointer-events: none;
+  background: var(--surface) !important;
+  color: var(--text2) !important;
+  cursor: default;
+}
+body.viewing-invoice #view-invoice .combo-actions,
+body.viewing-invoice #view-invoice .add-row-btn,
+body.viewing-invoice #view-invoice .del-row,
+body.viewing-invoice #view-invoice .combo-btn {
+  display: none !important;
+}
+body.viewing-invoice .invoice-detail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+body.viewing-invoice .invoice-detail-actions button { width: 100%; text-align: left; padding: 8px 12px; }
+body.light-theme.viewing-invoice #view-invoice input,
+body.light-theme.viewing-invoice #view-invoice textarea,
+body.light-theme.viewing-invoice #view-invoice select { background: #f8fafc !important; }

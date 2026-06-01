@@ -17,7 +17,7 @@
   </div>
   <nav class="topbar-nav" aria-label="Main navigation">
     <button class="nav-link" data-route="home"      type="button" onclick="openHome()">Home</button>
-    <button class="nav-link" data-route="invoice"   type="button" onclick="goToInvoice()">Editor</button>
+    <button class="nav-link" data-route="drafts"    type="button" onclick="openDrafts()">Drafts</button>
     <button class="nav-link" data-route="invoices"  type="button" onclick="openInvoices()">Invoices</button>
     <button class="nav-link" data-route="customers" type="button" onclick="openCustomers()">Customers</button>
     <button class="nav-link" data-route="companies" type="button" onclick="openCompanies()">Companies</button>
@@ -105,7 +105,7 @@
 <!-- Mobile slide-down nav drawer. Hidden on desktop via CSS. -->
 <nav class="mobile-nav-drawer" id="mobile-nav-drawer" hidden aria-label="Mobile navigation">
   <button class="mobile-nav-item" type="button" data-route="home"      onclick="openHome(); closeMobileNav()">Home</button>
-  <button class="mobile-nav-item" type="button" data-route="invoice"   onclick="goToInvoice(); closeMobileNav()">Editor</button>
+  <button class="mobile-nav-item" type="button" data-route="drafts"    onclick="openDrafts(); closeMobileNav()">Drafts</button>
   <button class="mobile-nav-item" type="button" data-route="invoices"  onclick="openInvoices(); closeMobileNav()">Invoices</button>
   <button class="mobile-nav-item" type="button" data-route="customers" onclick="openCustomers(); closeMobileNav()">Customers</button>
   <button class="mobile-nav-item" type="button" data-route="companies" onclick="openCompanies(); closeMobileNav()">Companies</button>
@@ -351,6 +351,22 @@
       <strong id="action-template">Aurora</strong>
     </div>
   </div>
+  <!-- Issue card: visible only in v2 draft-edit mode (#/drafts/<id>).
+       Replaces the legacy Generate button when bound to a v2 draft.
+       Its label re-renders on every recalc so the next-number preview
+       stays fresh. -->
+  <div class="issue-card" id="issue-card" hidden>
+    <div class="issue-card-line">
+      <span class="issue-card-label">Will be saved as</span>
+      <strong id="issue-card-number">INV-001</strong>
+    </div>
+    <button class="gen-btn issue-btn" id="issue-btn" onclick="issueDraft()">
+      Issue (PDF) / إصدار الفاتورة
+    </button>
+    <button class="ghost-btn" id="discard-btn" onclick="discardCurrentDraft()">
+      Discard draft
+    </button>
+  </div>
   <button class="gen-btn" id="gen-btn" onclick="generateInvoice()">
     Generate Invoice (PDF) / إنشاء الفاتورة
   </button>
@@ -547,6 +563,28 @@
 <!-- Home (landing page) -->
 <section id="view-home" hidden>
   <div class="home-page" id="home-page-body"></div>
+</section>
+
+<!-- Drafts list page (new editor home) -->
+<section id="view-drafts" hidden>
+  <div class="invoices-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="openHome()" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Home</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1>Drafts</h1>
+        <p>Invoices you haven't issued yet. They live on this device until you issue or discard them.</p>
+      </div>
+      <div class="invoices-page-actions">
+        <button class="primary-btn" type="button" onclick="newDraftFromList()">+ New draft</button>
+      </div>
+    </header>
+    <div class="customers-list" id="drafts-list" aria-live="polite"></div>
+  </div>
 </section>
 
 <!-- Customers list page -->

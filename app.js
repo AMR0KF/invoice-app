@@ -37,6 +37,11 @@ let pdfJsModule = null;
 let currentInvoiceStatus = 'draft';   // 'draft' | 'issued' | 'paid'
 let currentInvoicePaidDate = null;    // ISO date string when status === 'paid'
 
+// Redraft: when the editor is bound to a v2 draft (#/drafts/<id>), this
+// holds the draft's local_id. Autosave routes to v2 storage instead of
+// the legacy v1 slot, and the inv-num field is read-only.
+let editingDraftId = null;
+
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   // Route IMMEDIATELY so the right view (home, editor, ...) is visible
@@ -44,37 +49,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   // the user staring at whichever view is first in the HTML.
   routeView();
 
-  // Set today's date
+  // Drafts v2 storage: hydrate the in-memory map, then promote / clean
+  // up any legacy inv_draft_v1 payload (idempotent).
+  loadDrafts();
+  migrateLegacyDraftIfNeeded();
+
+  // Set today's date (used by the editor when a draft is opened).
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('inv-date').value = today;
   document.getElementById('inv-due').value  = new Date(Date.now() + 7*864e5).toISOString().split('T')[0];
   loadDocumentSettings();
   renderItemHistoryDatalist();
-  // Restore FIRST so the empty-form initial recalc() can't wipe a saved draft.
-  // restoreDraft itself runs with _draftRestoring=true to guard against
-  // recursive saves while it's populating fields.
-  const restored = restoreDraft();
-  await initSupabaseAuth();
-  if (!supabaseActive()) {
-    toggleDiscount();
-    if (!rowCount) addRow();
-    await loadInvoiceNumber();
-    if (!restored) restoreDraft();
-    renderInvoiceStatus();
-    renderEditingBanner();
-    wireDraftAutosave();
-    routeView();
-    return;
-  }
-  await loadInvoiceNumber();
 
-  await loadCompanies();
-  await loadCustomers();
+  await initSupabaseAuth();
   toggleDiscount();
   if (!rowCount) addRow();
-  if (!restored) restoreDraft();
-  renderInvoiceStatus();
+  // Always load invoices early — Home, Drafts, and the Issue action's
+  // next-number compute all depend on it.
+  await loadInvoices().catch(() => {});
+  if (supabaseActive()) {
+    await loadCompanies();
+    await loadCustomers();
+  }
   wireDraftAutosave();
+  // Final routeView after all async work — re-renders the active view
+  // with the now-loaded data (especially Home's hero stats).
   routeView();
 });
 
@@ -94,6 +93,10 @@ function wireDraftAutosave() {
   const numEl = document.getElementById('inv-num');
   if (numEl && numEl.dataset.numListenerWired !== '1') {
     numEl.addEventListener('input', (e) => {
+      // In v2 draft-edit mode, the field is read-only and shows a live
+      // next-number hint — user can't actually change it. Skip the
+      // legacy binding-break logic entirely.
+      if (editingDraftId) return;
       if (editor.mode !== 'editing') return;
       if (_draftRestoring) return;
       const v = (e.target.value || '').trim();
@@ -107,11 +110,19 @@ function wireDraftAutosave() {
 }
 
 // Single delegated handler for any input/change inside #view-invoice.
-//   - 'new' mode: persist into inv_draft_v1 (debounced).
-//   - 'editing' mode: do NOT touch the draft slot; flip editor.dirty so
-//     the "Save changes" button enables.
+//   - draft-edit route: route writes to v2 draft slot.
+//   - legacy 'editing' mode: flip dirty so Save button enables.
+//   - legacy 'new' mode: persist into inv_draft_v1 (debounced).
 function onEditorInput() {
   if (_draftRestoring) return;
+  // New world: the form is bound to a v2 draft. Autosave per-draft.
+  if (editingDraftId) {
+    writeEditingDraft();
+    // The next-number hint depends on the invoices list, which can
+    // change between renders. Refresh on every input so the field
+    // stays accurate even after a draft autosave triggers nothing else.
+    return;
+  }
   if (editor.mode === 'editing') {
     if (!editor.dirty) {
       editor.dirty = true;
@@ -351,19 +362,30 @@ function updateActionSummary() {
 // All route comparisons should go through this — never hand-roll
 // `hash.startsWith(...)` again.
 //
-// Empty hash and `#/` default to HOME (the landing page). The editor is
-// at the explicit `#/editor` route — back buttons return to home, not
-// editor, matching the hub-and-spoke layout.
+// Empty hash and `#/` default to HOME (the landing page).
+//
+// Invoice lifecycle routes (added in the redraft):
+//   #/drafts                 — list of unsent drafts
+//   #/drafts/<local_id>      — edit one draft (the new "editor")
+//   #/invoices/<id>          — view one issued invoice (read-only)
+//   #/invoices/<id>/edit     — supersede flow (creates a new draft)
+//   #/editor                 — legacy bookmark; alias for #/drafts
 function currentRouteName() {
   const h = location.hash || '';
-  if (h.startsWith('#/editor'))       return 'editor';
+  // Drafts must check the `/<id>` variant first so it doesn't match the
+  // list route. Same for invoices.
+  if (h.startsWith('#/drafts/'))      return 'draft-edit';
+  if (h.startsWith('#/drafts'))       return 'drafts';
+  if (h.startsWith('#/invoices/') && h.endsWith('/edit')) return 'invoice-edit';
+  if (h.startsWith('#/invoices/'))    return 'invoice-detail';
+  if (h.startsWith('#/invoices'))     return 'invoices';
+  if (h.startsWith('#/editor'))       return 'editor';   // legacy
   if (h.startsWith('#/home'))         return 'home';
   if (h.startsWith('#/customers/'))   return 'customer-detail';
   if (h.startsWith('#/customers'))    return 'customers';
   if (h.startsWith('#/companies/'))   return 'company-detail';
   if (h.startsWith('#/companies'))    return 'companies';
   if (h.startsWith('#/financial'))    return 'financial';
-  if (h.startsWith('#/invoices'))     return 'invoices';
   if (h.startsWith('#/settings'))     return 'settings';
   return 'home';
 }
@@ -372,33 +394,58 @@ function currentRouteName() {
 function navHighlightFor(route) {
   if (route === 'customer-detail') return 'customers';
   if (route === 'company-detail')  return 'companies';
-  if (route === 'editor')          return 'invoice';
+  if (route === 'invoice-detail')  return 'invoices';
+  if (route === 'invoice-edit')    return 'drafts';
+  if (route === 'editor')          return 'drafts';   // legacy redirect target
+  if (route === 'draft-edit')      return 'drafts';
   return route;
 }
 
 const ALL_VIEW_IDS = [
   'view-home', 'view-invoice', 'view-invoices', 'view-customers',
   'view-customer', 'view-companies', 'view-company', 'view-financial',
-  'view-settings',
+  'view-settings', 'view-drafts',
 ];
 
 function routeView() {
-  const route = currentRouteName();
+  let route = currentRouteName();
   const hash  = (location.hash || '').replace(/^#/, '');
+  // Legacy #/editor: redirect to #/drafts (the new landing for the editor).
+  // The redirect triggers another hashchange → routeView, so just bail.
+  if (route === 'editor') {
+    location.hash = '#/drafts';
+    return;
+  }
+  // Leaving a draft-edit route unbinds the editor from v2 storage so
+  // later input events don't write back to the draft we just closed.
+  if (route !== 'draft-edit' && editingDraftId) {
+    editingDraftId = null;
+    if (typeof clearDraftEditorChrome === 'function') clearDraftEditorChrome();
+  }
+  // Leaving an invoice-detail route restores normal editor chrome.
+  if (route !== 'invoice-detail' && viewingInvoiceId) {
+    viewingInvoiceId = null;
+    if (typeof clearInvoiceViewerChrome === 'function') clearInvoiceViewerChrome();
+  }
   const navRoute = navHighlightFor(route);
 
-  // The editor is the default ('editor') when no hash; everything else
-  // matches its view-* id directly.
+  // Map each route to the section element it shows. Draft-edit and
+  // invoice-detail reuse `view-invoice` (the editor's DOM) — the
+  // editor-binding logic (step 5+) configures it for read-only vs
+  // editable mode based on the route.
   const visibleId = ({
-    home:            'view-home',
-    editor:          'view-invoice',
-    invoices:        'view-invoices',
-    customers:       'view-customers',
+    home:              'view-home',
+    drafts:            'view-drafts',
+    'draft-edit':      'view-invoice',
+    'invoice-detail':  'view-invoice',
+    'invoice-edit':    'view-invoice',
+    invoices:          'view-invoices',
+    customers:         'view-customers',
     'customer-detail': 'view-customer',
-    companies:       'view-companies',
+    companies:         'view-companies',
     'company-detail':  'view-company',
-    financial:       'view-financial',
-    settings:        'view-settings',
+    financial:         'view-financial',
+    settings:          'view-settings',
   })[route];
 
   // Hide everything, then unhide the active view.
@@ -408,13 +455,16 @@ function routeView() {
   });
 
   // Body classes (used by responsive CSS that hides chrome on sub-pages).
-  document.body.classList.toggle('on-settings',  route === 'settings');
-  document.body.classList.toggle('on-invoices',  route === 'invoices');
-  document.body.classList.toggle('on-customer',  route === 'customer-detail');
-  document.body.classList.toggle('on-customers', route === 'customers');
-  document.body.classList.toggle('on-companies', route === 'companies' || route === 'company-detail');
-  document.body.classList.toggle('on-financial', route === 'financial');
-  document.body.classList.toggle('on-home',      route === 'home');
+  document.body.classList.toggle('on-settings',     route === 'settings');
+  document.body.classList.toggle('on-invoices',     route === 'invoices');
+  document.body.classList.toggle('on-customer',     route === 'customer-detail');
+  document.body.classList.toggle('on-customers',    route === 'customers');
+  document.body.classList.toggle('on-companies',    route === 'companies' || route === 'company-detail');
+  document.body.classList.toggle('on-financial',    route === 'financial');
+  document.body.classList.toggle('on-home',         route === 'home');
+  document.body.classList.toggle('on-drafts',       route === 'drafts');
+  document.body.classList.toggle('on-draft-edit',   route === 'draft-edit');
+  document.body.classList.toggle('on-invoice-view', route === 'invoice-detail' || route === 'invoice-edit');
 
   document.querySelectorAll('.topbar-nav .nav-link').forEach(el => {
     el.classList.toggle('active', el.dataset.route === navRoute);
@@ -481,10 +531,36 @@ function routeView() {
     else window.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
-  // route === 'editor' — re-render the banner so a stale field /
-  // boundNumber pair gets reconciled (see reconcileEditorBinding).
-  if (typeof renderEditingBanner === 'function') renderEditingBanner();
-  if (typeof renderEditingSaveButton === 'function') renderEditingSaveButton();
+  if (route === 'drafts') {
+    if (typeof renderDraftsPage === 'function') renderDraftsPage();
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (route === 'draft-edit') {
+    const local_id = hash.split('/')[2] || '';
+    bindEditorToDraft(local_id);
+    return;
+  }
+  if (route === 'invoice-detail') {
+    // Read-only view of one invoice. Step 7 builds the renderer; for
+    // now the editor view is shown and the user can fall back to the
+    // existing "open from list" flow.
+    if (typeof renderInvoiceDetail === 'function') {
+      const id = hash.split('/')[2] || '';
+      renderInvoiceDetail(id);
+      loadInvoices().then(() => { if (typeof renderInvoiceDetail === 'function') renderInvoiceDetail(id); }).catch(() => {});
+    }
+    return;
+  }
+  if (route === 'invoice-edit') {
+    // Supersede flow. Step 8 implements; for now route is a stub so
+    // the link doesn't 404.
+    if (typeof startSupersedeFlow === 'function') {
+      const id = hash.split('/')[2] || '';
+      startSupersedeFlow(id);
+    }
+    return;
+  }
 }
 
 function openInvoices() {
@@ -501,6 +577,112 @@ function openCompanies() {
 }
 function openFinancial() {
   if (location.hash === '#/financial') routeView(); else location.hash = '#/financial';
+}
+function openDrafts() {
+  // If the user has no drafts yet, skip the empty-state list and drop
+  // them straight into a fresh editor — same number of clicks as the
+  // legacy editor landing, no "where's the form?" confusion.
+  if (Object.keys(drafts || {}).length === 0) {
+    const d = newDraft({});
+    openDraft(d.local_id);
+    return;
+  }
+  if (location.hash === '#/drafts') routeView(); else location.hash = '#/drafts';
+}
+function openDraft(local_id) {
+  if (!local_id) return;
+  location.hash = '#/drafts/' + encodeURIComponent(local_id);
+}
+function openInvoiceDetail(invoice_id) {
+  if (!invoice_id) return;
+  location.hash = '#/invoices/' + encodeURIComponent(invoice_id);
+}
+
+// Compute a draft's grand total from its persisted items + discounts.
+// Mirrors recalc()'s formula but reads from the draft record, not the
+// DOM — drafts in the list page haven't been hydrated into the editor.
+function draftGrandTotal(d) {
+  const items = Array.isArray(d?.items) ? d.items : [];
+  const includeDisc = !!d?.include_discount;
+  let sub = 0, lineDisc = 0;
+  items.forEach(it => {
+    const q = Number(it.qty) || 0;
+    const u = Number(it.unit_price) || 0;
+    const x = includeDisc ? (Number(it.discount_pct) || 0) : 0;
+    const gross = q * u;
+    sub      += gross;
+    lineDisc += gross * (x / 100);
+  });
+  const afterLines = sub - lineDisc;
+  const invDisc = d?.invoice_discount || {};
+  let invDiscAmt = 0;
+  if (invDisc.enabled) {
+    const v = Number(invDisc.value) || 0;
+    invDiscAmt = invDisc.type === 'fixed' ? v : afterLines * (v / 100);
+    if (invDiscAmt > afterLines) invDiscAmt = afterLines;
+  }
+  const taxable = afterLines - invDiscAmt;
+  const vatPct  = Number(d?.vat_pct) || 0;
+  const vatAmt  = taxable * (vatPct / 100);
+  return taxable + vatAmt;
+}
+
+function renderDraftsPage() {
+  const list = document.getElementById('drafts-list');
+  if (!list) return;
+  const all = listDrafts();
+  if (all.length === 0) {
+    list.innerHTML = `<div class="invoices-empty">
+      <strong>No drafts yet.</strong><br>
+      Click <em>+ New draft</em> above to start one.
+    </div>`;
+    return;
+  }
+  list.innerHTML = all.map(d => {
+    const buyer = d.buyer?.name || '(no buyer yet)';
+    const items = Array.isArray(d.items) ? d.items.length : 0;
+    const total = draftGrandTotal(d);
+    const cur   = d.currency || 'USD';
+    const updatedAgo = typeof humanTimeAgo === 'function' ? humanTimeAgo(d.updated_at) : (d.updated_at || '').slice(0, 10);
+    return `
+      <div class="customer-card" onclick="openDraft('${escapeHtml(d.local_id)}')">
+        <div class="customer-card-name">
+          <strong>${escapeHtml(buyer)}</strong>
+          <span class="meta">${items} item${items === 1 ? '' : 's'}${d.notes ? ' · ' + escapeHtml(d.notes.slice(0, 50)) : ''}</span>
+        </div>
+        <div class="customer-card-num">
+          <span class="label">Total</span>
+          <span class="value">${fmtMoney(total, cur)}</span>
+        </div>
+        <div class="customer-card-num">
+          <span class="label">Updated</span>
+          <span class="value zero">${escapeHtml(updatedAgo)}</span>
+        </div>
+        <div class="customer-card-mix">
+          <span class="chip">Draft</span>
+          ${d.supersedes ? `<span class="chip" style="border-color: color-mix(in srgb, var(--accent) 40%, var(--border))">Replaces ${escapeHtml(d.supersedes_number || '…')}</span>` : ''}
+        </div>
+        <div class="customer-card-actions" onclick="event.stopPropagation()">
+          <button class="ghost-btn" type="button" onclick="openDraft('${escapeHtml(d.local_id)}')">Open</button>
+          <button class="ghost-btn danger" type="button" onclick="discardDraft('${escapeHtml(d.local_id)}')">Discard</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function newDraftFromList() {
+  const d = newDraft({});
+  openDraft(d.local_id);
+}
+
+function discardDraft(local_id) {
+  const d = getDraft(local_id);
+  if (!d) return;
+  const label = d.buyer?.name ? `the draft for "${d.buyer.name}"` : 'this draft';
+  if (!confirm(`Discard ${label}? It can't be recovered.`)) return;
+  deleteDraftV2(local_id);
+  renderDraftsPage();
+  toast('Draft discarded', 'success');
 }
 
 // Mobile slide-down nav drawer.
@@ -808,24 +990,26 @@ async function deleteSettingsCompany() {
 function useSettingsCompanyOnInvoice(showToast = true) {
   const company = settingsCompanyId ? companies.find(c => c.id === settingsCompanyId) : collectSettingsCompany();
   if (!company || !company.name) { toast('Select or save a company first', 'error'); return; }
+  if (showToast) {
+    // v2 flow: create a fresh draft seeded with this company and open it.
+    startNewInvoiceForCompany(company.id || settingsCompanyId);
+    toast('Company loaded on a new draft', 'success');
+    return;
+  }
+  // Internal silent caller (e.g., during save flows) — still write to
+  // the legacy form fields so any in-progress legacy state is consistent.
   applyCompanyToInvoice(company);
   renderDropdown('company');
-  if (showToast) toast('Company loaded on invoice', 'success');
-  // The button label promises navigation ("Use on invoice"); deliver on it.
-  // Internal callers pass showToast=false when they don't want the bounce
-  // (e.g. silent applies during save flows).
-  if (showToast) goToInvoice();
 }
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if (supabaseActive()) closeAuthModal();
     closePdfPreview();
-    // Escape from any off-editor route returns to the editor. Was previously
-    // gated to #/settings only — now covers #/invoices and #/customers/<id>.
+    // Escape from any sub-route returns to Home (the new hub).
     const hash = location.hash || '';
-    if (hash.startsWith('#/settings') || hash.startsWith('#/invoices') || hash.startsWith('#/customers/')) {
-      goToInvoice();
+    if (hash && hash !== '#/' && hash !== '#/home') {
+      openHome();
     }
   }
 });
@@ -1878,7 +2062,10 @@ function recalc() {
   document.getElementById('w-ar').textContent = w.ar;
   updateActionSummary();
   renderInvoiceStatus();
-  saveDraft();
+  // Editor autosave. In v2 draft-edit mode, write to the per-draft v2
+  // slot. Otherwise fall through to the legacy v1 saveDraft.
+  if (editingDraftId) writeEditingDraft();
+  else saveDraft();
 }
 
 // ── Collect form data ──────────────────────────────────────────────────────
@@ -1933,13 +2120,654 @@ function collectData() {
   };
 }
 
-// ── Draft autosave ─────────────────────────────────────────────────────────
+// ── Drafts v2 storage ──────────────────────────────────────────────────────
+// New per-draft storage keyed by a client-side UUID (see
+// .planning/INVOICE_REDRAFT.md). Multiple drafts can coexist; each lives
+// in its own slot. Drafts have NO invoice number — the number is assigned
+// at issuance.
+//
+// The legacy `inv_draft_v1` slot (single-overloaded) is kept readable
+// for one boot via migrateLegacyDraftIfNeeded() — that one-shot promotes
+// it into v2 and removes the old key. After that, only v2 is touched.
+const DRAFTS_V2_KEY = 'inv_drafts_v2';
+let drafts = {};                  // { [local_id]: DraftRecord }
+let _draftsPersistTimer = null;
+
+function _readDraftsLS() {
+  try {
+    const raw = localStorage.getItem(DRAFTS_V2_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+}
+function _writeDraftsLS(map) {
+  try { localStorage.setItem(DRAFTS_V2_KEY, JSON.stringify(map || {})); }
+  catch (e) { /* quota — silent */ }
+}
+
+function loadDrafts() {
+  drafts = _readDraftsLS();
+  return drafts;
+}
+
+// Debounced 350ms — same cadence as the legacy autosave.
+function persistDrafts() {
+  if (_draftsPersistTimer) clearTimeout(_draftsPersistTimer);
+  _draftsPersistTimer = setTimeout(() => _writeDraftsLS(drafts), 350);
+}
+// Immediate variant for destructive operations (delete, issue) where
+// we must not race with a pending debounce.
+function persistDraftsNow() {
+  if (_draftsPersistTimer) { clearTimeout(_draftsPersistTimer); _draftsPersistTimer = null; }
+  _writeDraftsLS(drafts);
+}
+
+// Generate a stable, opaque local id. Crypto.randomUUID where available,
+// otherwise a time+random fallback. The 'd_' prefix makes draft ids easy
+// to spot in logs and is a hint to debuggers that this is NOT a Supabase
+// uuid.
+function newDraftLocalId() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return 'd_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    }
+  } catch {}
+  return 'd_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+// Create a new draft from an optional seed payload (e.g. when
+// duplicating an invoice or seeding a buyer block from the customer
+// detail page). Inserts into the `drafts` map and persists.
+function newDraft(seed = {}) {
+  const nowIso = new Date().toISOString();
+  const record = {
+    local_id: newDraftLocalId(),
+    created_at: nowIso,
+    updated_at: nowIso,
+    // The seed is a collectData()-shaped blob. It may contain
+    // invoice_number from legacy code paths; drop it — drafts are
+    // numberless until issuance.
+    ...seed,
+  };
+  delete record.invoice_number;
+  drafts[record.local_id] = record;
+  persistDraftsNow();
+  return record;
+}
+
+// Upsert a draft. `data` is the full collectData()-shaped payload.
+// `updated_at` is refreshed; `local_id` and `created_at` are preserved
+// from the existing record (or seeded if missing).
+function saveDraftV2(local_id, data) {
+  if (!local_id) return;
+  const existing = drafts[local_id] || {};
+  const nowIso = new Date().toISOString();
+  drafts[local_id] = {
+    ...existing,
+    ...data,
+    local_id,
+    created_at: existing.created_at || nowIso,
+    updated_at: nowIso,
+  };
+  // Drafts must never carry an invoice number.
+  delete drafts[local_id].invoice_number;
+  persistDrafts();
+}
+
+function deleteDraftV2(local_id) {
+  if (!local_id || !drafts[local_id]) return;
+  delete drafts[local_id];
+  persistDraftsNow();
+}
+
+function getDraft(local_id) {
+  return drafts[local_id] || null;
+}
+function listDrafts() {
+  // Most recently edited first.
+  return Object.values(drafts).sort((a, b) =>
+    String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+}
+
+// One-shot migration from the legacy single-slot draft. Runs at boot
+// before any draft reads. Idempotent via a marker flag, so subsequent
+// boots are no-ops.
+//
+// Promotes the legacy v1 payload into v2, then removes the v1 slot
+// entirely. The legacy editor code path is no longer reachable in the
+// redrafted system (see currentRouteName / routeView).
+const DRAFTS_V2_MIGRATED_KEY = 'inv_drafts_v2_migrated';
+function migrateLegacyDraftIfNeeded() {
+  let alreadyDone;
+  try { alreadyDone = localStorage.getItem(DRAFTS_V2_MIGRATED_KEY) === '1'; } catch { alreadyDone = false; }
+  if (alreadyDone) {
+    // Even on subsequent boots, ensure the legacy slot stays gone — a
+    // crash or downgrade-then-upgrade could otherwise leave a stale v1
+    // payload lying around.
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    return;
+  }
+  let raw;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch { raw = null; }
+  if (raw) {
+    let entry; try { entry = JSON.parse(raw); } catch { entry = null; }
+    const d = entry?.data;
+    // The legacy slot was reused as a "load saved invoice into the form"
+    // channel by older code. If we see a non-draft status, it's a stale
+    // record-payload leftover; skip the promotion.
+    if (d && (!d.status || d.status === 'draft')) {
+      newDraft(d);
+    }
+  }
+  // Always clear v1 and the stale next-number cache (computed from the
+  // invoices list now, not a counter).
+  try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  try { localStorage.removeItem('inv_next_number'); } catch {}
+  try { localStorage.setItem(DRAFTS_V2_MIGRATED_KEY, '1'); } catch {}
+}
+
+// Bind the editor form to a v2 draft. Hydrates the form from the
+// draft's stored payload, sets editingDraftId so autosave routes back
+// to v2, and flips the inv-num field to read-only with the live
+// next-number hint. Called from routeView when entering #/drafts/<id>.
+//
+// If the draft doesn't exist (stale URL, manual hash edit), create a
+// fresh one and redirect — never leave the user on a broken page.
+function bindEditorToDraft(local_id) {
+  let d = getDraft(local_id);
+  if (!d) {
+    d = newDraft({});
+    location.hash = '#/drafts/' + encodeURIComponent(d.local_id);
+    return;   // hashchange will re-invoke routeView with the right id
+  }
+  editingDraftId = d.local_id;
+  currentInvoiceStatus = 'draft';
+  currentInvoicePaidDate = null;
+  // Reset the form to defaults first so any leftover state from a
+  // previous draft / legacy session is cleared. applyPayloadToForm
+  // then overlays whatever the draft has saved. _draftRestoring is
+  // set inside applyPayloadToForm to suppress autosave during hydration.
+  _draftRestoring = true;
+  try {
+    if (typeof resetEditorForm === 'function') resetEditorForm();
+  } finally {
+    _draftRestoring = false;
+  }
+  applyPayloadToForm(d);
+  refreshDraftEditorChrome();
+}
+
+// Make the inv-num field read-only + populate it with the live next
+// number, and show the Issue card. Called on bind and on every
+// recalc-triggering input so the hint stays fresh as other devices issue.
+function refreshDraftEditorChrome() {
+  if (!editingDraftId) return;
+  const next = (typeof computeNextInvoiceNumber === 'function')
+    ? computeNextInvoiceNumber()
+    : 'INV-001';
+  const numEl = document.getElementById('inv-num');
+  if (numEl) {
+    numEl.readOnly = true;
+    numEl.classList.add('draft-num-readonly');
+    numEl.value = next;
+    numEl.title = 'Assigned at issuance — this is a preview of the next number';
+  }
+  // Hide the legacy "Editing INV-X" banner + status workflow UI in
+  // draft-edit mode (drafts are always draft status; no manual flip).
+  const banner = document.getElementById('editing-banner');
+  if (banner) banner.hidden = true;
+  const statusSection = document.getElementById('invoice-status-section');
+  if (statusSection) statusSection.dataset.draftMode = '1';
+  // Show the Issue card, hide the legacy Generate button. The Print PDF
+  // preview button stays — it's a read-only render and is useful for
+  // proofing a draft before issuing.
+  const issueCard = document.getElementById('issue-card');
+  if (issueCard) issueCard.hidden = false;
+  const issueNum = document.getElementById('issue-card-number');
+  if (issueNum) issueNum.textContent = next;
+  const genBtn = document.getElementById('gen-btn');
+  if (genBtn) genBtn.hidden = true;
+}
+
+// Step 10 will remove the legacy chrome entirely. For now, when the
+// editor view is shown WITHOUT editingDraftId set (legacy code paths,
+// e.g. the deprecated openInvoiceFromList), restore the inv-num
+// field's editability so the legacy editor still functions.
+function clearDraftEditorChrome() {
+  const numEl = document.getElementById('inv-num');
+  if (numEl) {
+    numEl.readOnly = false;
+    numEl.classList.remove('draft-num-readonly');
+    numEl.title = '';
+  }
+  const statusSection = document.getElementById('invoice-status-section');
+  if (statusSection) delete statusSection.dataset.draftMode;
+  const issueCard = document.getElementById('issue-card');
+  if (issueCard) issueCard.hidden = true;
+  const genBtn = document.getElementById('gen-btn');
+  if (genBtn) genBtn.hidden = false;
+}
+
+// ── Draft autosave (legacy v1 — kept until step 10 cleanup pass) ─────────
 // The full invoice form is persisted to localStorage so a tab swipe / page
 // reload / crashed browser doesn't wipe in-progress work. Restore runs once
 // at boot; saveDraft is debounced through recalc().
+//
+// When editingDraftId is set (#/drafts/<id> route), autosave is
+// REDIRECTED to v2 storage via writeEditingDraft(). The legacy v1 path
+// is kept for any remaining call sites that haven't migrated; step 10
+// removes them.
 const DRAFT_KEY = 'inv_draft_v1';
 let _draftSaveTimer = null;
 let _draftRestoring = false;
+
+// Persist the current form state into the v2 draft the editor is bound
+// to. Strips invoice_number (drafts are numberless). Called from
+// onEditorInput when editingDraftId is set.
+function writeEditingDraft() {
+  if (!editingDraftId) return;
+  const data = collectData();
+  // Drafts never carry a number; the field shows the live next-number
+  // hint, not a user-set value.
+  delete data.invoice_number;
+  saveDraftV2(editingDraftId, data);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ISSUE — commit a v2 draft to public.invoices and tear it down.
+// ─────────────────────────────────────────────────────────────────────
+// The DB is the authority on number uniqueness via the
+// (user_id, number) unique index added in 2026-05-30-invoice-supersede.sql.
+// On 23505 unique_violation the client retries with `next + 1`, up to
+// ISSUE_MAX_RETRIES. Every other error surfaces to the user.
+const ISSUE_MAX_RETRIES = 5;
+
+async function issueDraft() {
+  if (!editingDraftId) return;
+  const draft = getDraft(editingDraftId);
+  if (!draft) { toast('No draft to issue', 'error'); return; }
+  if (!draft.buyer?.name) { toast('Please enter a client name first', 'error'); return; }
+  const items = Array.isArray(draft.items) ? draft.items : [];
+  if (items.length === 0 || !items.some(it => Number(it.qty) > 0 || Number(it.unit_price) > 0)) {
+    toast('Add at least one line item', 'error');
+    return;
+  }
+
+  const previewNumber = computeNextInvoiceNumber();
+  const buyerLabel = draft.buyer?.name || '(no buyer)';
+  if (!confirm(`Issue ${previewNumber} to ${buyerLabel}?\n\nThis assigns the number, generates the PDF, and saves the invoice.`)) {
+    return;
+  }
+
+  const btn = document.getElementById('issue-btn');
+  const previousLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Issuing…'; }
+
+  try {
+    // Build the payload the renderer expects. The draft is numberless;
+    // we inject the just-computed number into the snapshot so the PDF
+    // header is correct.
+    const data = { ...draft, invoice_number: previewNumber };
+    // Render the PDF first. If this fails, the draft is untouched.
+    const pdfInfo = await renderPdfForData(data);
+    if (!pdfInfo) {
+      throw new Error('PDF generation failed');
+    }
+    // Insert with retry on number collision. Each retry recomputes the
+    // next number against the latest invoices list — another tab issuing
+    // simultaneously will have populated `invoices` already if we
+    // refreshed, but the unique constraint is the authority either way.
+    let saved = null;
+    let attemptNumber = previewNumber;
+    let lastErr = null;
+    for (let i = 0; i < ISSUE_MAX_RETRIES; i++) {
+      const record = buildIssueRecord(draft, attemptNumber, pdfInfo);
+      try {
+        saved = await insertInvoiceRow(record);
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (!isUniqueViolation(err)) throw err;
+        // Re-read latest invoices and pick a new candidate number.
+        await loadInvoices().catch(() => {});
+        attemptNumber = computeNextInvoiceNumber();
+      }
+    }
+    if (!saved) {
+      throw lastErr || new Error('Could not assign a unique invoice number');
+    }
+
+    // If this draft was a supersede edit, void the original and link
+    // it to the replacement via superseded_by. Best-effort: the new
+    // invoice is already saved either way; a failure here surfaces as
+    // a toast but doesn't roll back the issuance.
+    const supersedesId = drafts[editingDraftId]?.supersedes;
+    if (supersedesId) {
+      try {
+        await patchInvoice(supersedesId, { status: 'void', superseded_by: saved.id });
+      } catch (err) {
+        toast(`Issued ${saved.number}, but couldn't void the original — please void it manually`, 'error');
+      }
+    }
+    // Draft is now superseded by the saved record; remove it.
+    deleteDraftV2(editingDraftId);
+    editingDraftId = null;
+    setLastGeneratedPdf({
+      filename: pdfInfo.filename,
+      url: pdfInfo.url,
+      blob: pdfInfo.blob,
+      invoiceNumber: saved.number,
+      isObjectUrl: !!pdfInfo.isObjectUrl,
+    });
+    toast(supersedesId ? `${saved.number} issued (replaces voided original)` : `${saved.number} issued`, 'success');
+    openInvoiceDetail(saved.id);
+  } catch (err) {
+    toast(err && err.message ? `Issue failed: ${err.message}` : 'Issue failed', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = previousLabel || 'Issue (PDF) / إصدار الفاتورة'; }
+  }
+}
+
+function isUniqueViolation(err) {
+  // Supabase / postgrest surfaces 23505 via .code on the returned error,
+  // and the message contains "duplicate key value violates unique constraint".
+  if (!err) return false;
+  if (err.code === '23505') return true;
+  const msg = String(err.message || '');
+  return /duplicate key|unique constraint|23505/i.test(msg);
+}
+
+// Build a record ready for `saveInvoice`. The number comes from the
+// caller (so retry can vary it without recomputing the whole record).
+function buildIssueRecord(draft, number, pdfInfo) {
+  const payload = { ...draft, invoice_number: number };
+  // The grand total: trust the form's live recalc — collectData()
+  // doesn't include the total, so we mirror buildInvoiceRecordFromForm.
+  const totalText = (document.getElementById('t-grand')?.textContent || '').replace(/[^0-9.\-]/g, '');
+  const total = parseFloat(totalText) || 0;
+  return {
+    number,
+    status:      'issued',
+    date:        payload.date,
+    due_date:    payload.due_date,
+    customer_id: selCustId || null,
+    company_id:  selCompId || null,
+    buyer:       payload.buyer,
+    seller:      payload.seller,
+    total,
+    currency:    payload.currency,
+    payload,
+    history:     [{ at: new Date().toISOString(), from: 'draft', to: 'issued' }],
+  };
+}
+
+// Insert one invoice row. Wraps the existing saveInvoice() helper so
+// the issuance path stays decoupled from any legacy persistence quirks
+// — and also rethrows on a unique violation so issueDraft() can retry.
+async function insertInvoiceRow(record) {
+  if (!supabaseActive()) {
+    // Local / offline mode: saveInvoice succeeds with a fallback id.
+    // No DB-side uniqueness to enforce; rely on the client compute.
+    return await saveInvoice(record);
+  }
+  const nowIso = new Date().toISOString();
+  const base = {
+    number:   record.number,
+    status:   record.status || 'issued',
+    date:     record.date,
+    due_date: record.due_date || null,
+    customer_id: record.customer_id || null,
+    company_id:  record.company_id  || null,
+    buyer:    record.buyer || {},
+    seller:   record.seller || {},
+    total:    Number(record.total) || 0,
+    currency: record.currency || 'USD',
+    payload:  record.payload || {},
+    history:  record.history || [],
+    sent_at:  nowIso,
+  };
+  const { data, error } = await supabaseClient
+    .from('invoices')
+    .insert({ ...base, user_id: supabaseUser.id })
+    .select('*')
+    .single();
+  if (error) {
+    const e = new Error(error.message || 'Insert failed');
+    e.code = error.code;
+    throw e;
+  }
+  invoices.unshift(data);
+  return data;
+}
+
+// Render PDF from a payload (used by Issue). Reuses the existing
+// requestPdfGeneration helper so the renderer code path is unchanged.
+async function renderPdfForData(data) {
+  const response = await requestPdfGeneration(data);
+  const contentType = response.headers.get('Content-Type') || '';
+  if (contentType.includes('application/pdf')) {
+    const blob = await response.blob();
+    const filename = filenameFromResponse(response, data.invoice_number);
+    const url = URL.createObjectURL(blob);
+    return { filename, url, blob, isObjectUrl: true };
+  }
+  const r = await response.json();
+  if (!r.ok) return null;
+  return { filename: r.filename, url: pdfDownloadUrl(r.filename), isObjectUrl: false };
+}
+
+async function discardCurrentDraft() {
+  if (!editingDraftId) return;
+  const d = getDraft(editingDraftId);
+  const label = d?.buyer?.name ? `the draft for "${d.buyer.name}"` : 'this draft';
+  if (!confirm(`Discard ${label}? It can't be recovered.`)) return;
+  const id = editingDraftId;
+  editingDraftId = null;
+  clearDraftEditorChrome();
+  deleteDraftV2(id);
+  toast('Draft discarded', 'success');
+  openDrafts();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// INVOICE DETAIL (read-only) — #/invoices/<id>
+// ─────────────────────────────────────────────────────────────────────
+// Reuses the editor's DOM but disables all inputs and shows a
+// dedicated action header (status, Mark paid / Void / Edit / Open PDF).
+let viewingInvoiceId = null;
+
+function renderInvoiceDetail(invoice_id) {
+  if (!invoice_id) return;
+  viewingInvoiceId = invoice_id;
+  const inv = (invoices || []).find(r => r.id === invoice_id);
+  if (!inv) {
+    // List may not be loaded yet — render a placeholder; routeView
+    // will re-call this after loadInvoices resolves.
+    showInvoiceViewerPlaceholder();
+    return;
+  }
+  // Hydrate the form from the invoice's payload (immutable snapshot).
+  _draftRestoring = true;
+  try {
+    if (typeof resetEditorForm === 'function') resetEditorForm();
+  } finally { _draftRestoring = false; }
+  applyPayloadToForm(inv.payload || {});
+  // Force the inv-num field to the saved number — applyPayloadToForm
+  // already does this from payload.invoice_number but be explicit.
+  const numEl = document.getElementById('inv-num');
+  if (numEl) numEl.value = inv.number || numEl.value;
+  // Toggle chrome.
+  setInvoiceViewerChrome(inv);
+}
+
+function showInvoiceViewerPlaceholder() {
+  setInvoiceViewerChrome(null);
+}
+
+// Configure view-invoice's chrome for read-only invoice display.
+function setInvoiceViewerChrome(inv) {
+  // Mark body so the all-disabled CSS rule kicks in.
+  document.body.classList.add('viewing-invoice');
+  // Hide draft chrome.
+  if (typeof clearDraftEditorChrome === 'function') clearDraftEditorChrome();
+  // Hide the legacy gen / print / status-section / banner.
+  const genBtn   = document.getElementById('gen-btn');
+  const issueCard= document.getElementById('issue-card');
+  if (genBtn)    genBtn.hidden    = true;
+  if (issueCard) issueCard.hidden = true;
+  const banner   = document.getElementById('editing-banner');
+  if (banner)    banner.hidden    = true;
+  // Set the read-only inv-num style on the number field (same look as
+  // draft-mode preview but for the assigned number).
+  const numEl = document.getElementById('inv-num');
+  if (numEl) {
+    numEl.readOnly = true;
+    numEl.classList.add('draft-num-readonly');
+    numEl.title = 'Invoice number is fixed after issuance';
+  }
+  // Replace the side status-section's content with the detail action bar.
+  const statusSection = document.getElementById('invoice-status-section');
+  if (!statusSection) return;
+  statusSection.dataset.detailMode = '1';
+  if (!inv) {
+    statusSection.innerHTML = `<div class="side-title">Invoice</div><p class="side-note">Loading…</p>`;
+    return;
+  }
+  const eff = effectiveInvoiceStatus(inv);
+  const isPaid  = inv.status === 'paid';
+  const isVoid  = inv.status === 'void';
+  const isDraft = inv.status === 'draft';
+  const payAction = isPaid
+    ? `<button class="ghost-btn" type="button" onclick="markUnpaid('${escapeHtml(inv.id)}'); renderInvoiceDetail('${escapeHtml(inv.id)}')">Unpay</button>`
+    : `<button class="ghost-btn" type="button" onclick="markInvoicePaid('${escapeHtml(inv.id)}'); renderInvoiceDetail('${escapeHtml(inv.id)}')">Mark paid</button>`;
+  const voidAction = (isVoid || isDraft) ? '' :
+    `<button class="ghost-btn danger" type="button" onclick="voidInvoiceFromDetail('${escapeHtml(inv.id)}')">Void</button>`;
+  const editAction = isVoid ? '' :
+    `<button class="ghost-btn" type="button" onclick="startSupersedeFlow('${escapeHtml(inv.id)}')">Edit (supersede)</button>`;
+
+  // Supersede relationships: this invoice may have replaced an older
+  // one, or may itself have been replaced by a newer one.
+  const replacedById = inv.superseded_by;
+  const replacedBy = replacedById ? (invoices || []).find(r => r.id === replacedById) : null;
+  const replaces = (invoices || []).find(r => r.superseded_by === inv.id);
+  let supersedeBanner = '';
+  if (replacedBy) {
+    supersedeBanner = `
+      <div class="status-row" style="background: color-mix(in srgb, #dc2626 12%, var(--surface)); border-radius: 8px; padding: 10px 12px; margin-top: 10px; flex-direction: column; align-items: flex-start; gap: 4px;">
+        <strong style="font-size: 12px; color: #dc2626;">Voided — replaced by ${escapeHtml(replacedBy.number)}</strong>
+        <button class="ghost-btn" type="button" onclick="openInvoiceDetail('${escapeHtml(replacedBy.id)}')" style="padding: 4px 8px; font-size: 11px;">Open ${escapeHtml(replacedBy.number)}</button>
+      </div>`;
+  } else if (replaces) {
+    supersedeBanner = `
+      <div class="status-row" style="background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-radius: 8px; padding: 10px 12px; margin-top: 10px; flex-direction: column; align-items: flex-start; gap: 4px;">
+        <strong style="font-size: 12px; color: var(--accent2);">Replaces ${escapeHtml(replaces.number)}</strong>
+        <button class="ghost-btn" type="button" onclick="openInvoiceDetail('${escapeHtml(replaces.id)}')" style="padding: 4px 8px; font-size: 11px;">View original</button>
+      </div>`;
+  }
+
+  statusSection.innerHTML = `
+    <div class="side-title">Invoice ${escapeHtml(inv.number || '')}</div>
+    <div class="status-row">
+      <span class="status-badge" data-status="${eff}">${eff.charAt(0).toUpperCase() + eff.slice(1)}</span>
+      <span class="status-meta">${escapeHtml(inv.date || '')}</span>
+    </div>
+    ${supersedeBanner}
+    <div class="status-side-actions invoice-detail-actions">
+      ${payAction}
+      <button class="ghost-btn" type="button" onclick="duplicateInvoiceToDraft('${escapeHtml(inv.id)}')">Duplicate</button>
+      ${editAction}
+      ${voidAction}
+      <button class="ghost-btn" type="button" onclick="openInvoicePdf('${escapeHtml(inv.id)}')">Open PDF</button>
+    </div>
+    <p class="side-note" style="margin-top:10px">This is a read-only view of an issued invoice. To change it, use <strong>Edit</strong> — that creates a new draft and supersedes this one when issued.</p>`;
+}
+
+// Cleanup when leaving the invoice-detail route.
+function clearInvoiceViewerChrome() {
+  document.body.classList.remove('viewing-invoice');
+  const numEl = document.getElementById('inv-num');
+  if (numEl) {
+    numEl.readOnly = false;
+    numEl.classList.remove('draft-num-readonly');
+    numEl.title = '';
+  }
+  const statusSection = document.getElementById('invoice-status-section');
+  if (statusSection) delete statusSection.dataset.detailMode;
+  const genBtn = document.getElementById('gen-btn');
+  if (genBtn) genBtn.hidden = false;
+}
+
+// Void from the detail page action bar. Same effect as the list-row
+// "delete on issued/paid" which patches to status='void'.
+async function voidInvoiceFromDetail(id) {
+  const inv = (invoices || []).find(r => r.id === id);
+  if (!inv) return;
+  if (!confirm(`Void ${inv.number}? It will stay in the list with a strikethrough.`)) return;
+  await patchInvoice(id, { status: 'void' });
+  toast(`${inv.number} voided`, 'success');
+  renderInvoiceDetail(id);
+}
+
+// Duplicate an issued invoice into a new draft (no number).
+function duplicateInvoiceToDraft(id) {
+  const inv = (invoices || []).find(r => r.id === id);
+  if (!inv) { toast('Invoice not found', 'error'); return; }
+  const seed = { ...(inv.payload || {}) };
+  delete seed.invoice_number;
+  // Refresh the date — duplicates usually issue on today's date.
+  seed.date = new Date().toISOString().slice(0, 10);
+  delete seed.due_date;
+  const d = newDraft(seed);
+  openDraft(d.local_id);
+  toast(`Duplicated ${inv.number} into a new draft`, 'success');
+}
+
+// Open the stored PDF, regenerating from the saved payload if the
+// blob isn't in memory.
+async function openInvoicePdf(id) {
+  const inv = (invoices || []).find(r => r.id === id);
+  if (!inv?.payload) { toast('No payload for this invoice', 'error'); return; }
+  // We don't persist the blob — re-render from the snapshot.
+  const data = { ...inv.payload, invoice_number: inv.number };
+  try {
+    const info = await renderPdfForData(data);
+    if (!info) { toast('Could not render PDF', 'error'); return; }
+    setLastGeneratedPdf({ ...info, invoiceNumber: inv.number });
+    window.open(info.url, '_blank');
+  } catch (err) {
+    toast(`PDF render failed: ${err?.message || 'unknown'}`, 'error');
+  }
+}
+
+// Begin the edit/supersede flow. Clone the issued invoice's payload
+// into a new draft, mark the draft with `supersedes: <original_id>`,
+// and navigate to the new draft. When issueDraft commits, it will
+// also void the original with superseded_by pointing at the new id.
+function startSupersedeFlow(id) {
+  const inv = (invoices || []).find(r => r.id === id);
+  if (!inv) { toast('Invoice not found', 'error'); return; }
+  if (!confirm(
+    `Editing ${inv.number} supersedes the original.\n\n` +
+    `When you Issue the new version, ${inv.number} will be voided and ` +
+    `linked to the replacement (preserved for audit). Continue?`
+  )) return;
+  const seed = { ...(inv.payload || {}) };
+  delete seed.invoice_number;        // new number assigned at issuance
+  seed.date = new Date().toISOString().slice(0, 10);
+  delete seed.due_date;
+  const draft = newDraft(seed);
+  // Tag the supersede relationship inside the draft record itself so
+  // issueDraft can read it. saveDraftV2 preserves arbitrary fields.
+  drafts[draft.local_id].supersedes = inv.id;
+  drafts[draft.local_id].supersedes_number = inv.number;
+  persistDraftsNow();
+  openDraft(draft.local_id);
+  toast(`Replacing ${inv.number} — issue when ready`, 'success');
+}
+
+// Alias for any callers that imported the longer name.
+function beginSupersede(id) { return startSupersedeFlow(id); }
 
 function saveDraft() {
   if (_draftRestoring) return;
@@ -2631,8 +3459,10 @@ function renderInvoicesPage() {
 function openInvoiceFromList(id) {
   const inv = invoices.find(r => r.id === id);
   if (!inv) return;
-  loadInvoiceIntoEditor(inv);
-  goToInvoice();   // unified back-to-editor path; handles already-on-editor case
+  // Redraft: navigate to the read-only detail page instead of the
+  // legacy "load saved invoice into editor" flow. Edits go through
+  // the supersede action on the detail page.
+  openInvoiceDetail(id);
 }
 
 function loadInvoiceIntoEditor(inv) {
@@ -2706,10 +3536,12 @@ function duplicateCurrentInvoice() {
   toast('Duplicated into a new draft', 'success');
 }
 
-// + New invoice from the list header — clear the editor for a fresh draft.
+// + New invoice from the invoices list header. v2 flow: create a fresh
+// draft and route to it. The old startNewInvoice() / goToInvoice() pair
+// is dead code now and will be removed in step 10's cleanup.
 function newInvoiceFromList() {
-  startNewInvoice();
-  goToInvoice();
+  const d = newDraft({});
+  openDraft(d.local_id);
 }
 
 // Light in-place reset: clear bindings + draft, blank the form fields, pull
@@ -3006,22 +3838,27 @@ async function newInvoiceForCurrentCustomer() {
   await startNewInvoiceForCustomer(_currentCustomerDetailId);
 }
 
-// Seed the editor with a saved customer's contact details, then route
-// to the editor. Used by detail-page action button + can be reused by
-// future "duplicate to same customer" flows.
-async function startNewInvoiceForCustomer(customerId) {
-  await startNewInvoice();
+// Seed a NEW v2 draft with a saved customer's contact details, then
+// route to that draft. Used by detail-page action button +
+// "duplicate to same customer" flows.
+function startNewInvoiceForCustomer(customerId) {
   const c = (customers || []).find(x => x.id === customerId);
-  if (!c) { goToInvoice(); return; }
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
-  set('b-name',  c.name);
-  set('b-addr',  c.address);
-  set('b-phone', c.phone);
-  set('b-email', c.email);
-  set('b-net-terms', c.net_terms_days ?? 30);
-  selCustId = customerId;
-  if (typeof recalc === 'function') recalc();
-  goToInvoice();
+  const seed = c ? {
+    buyer: {
+      name:    c.name || '',
+      address: c.address || '',
+      phone:   c.phone || '',
+      email:   c.email || '',
+      net_terms_days: c.net_terms_days ?? 30,
+    },
+  } : {};
+  const d = newDraft(seed);
+  // Stash the customer id so the issued invoice links back correctly.
+  if (customerId) {
+    drafts[d.local_id].customer_id = customerId;
+    persistDraftsNow();
+  }
+  openDraft(d.local_id);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -3111,11 +3948,13 @@ function renderCustomersPage() {
   }).join('');
 }
 
-// "+ New customer" button on the customers list — open a blank editor
+// "+ New customer" button on the customers list — open a new draft
 // with focus in the buyer name field so the user can type and save.
-async function newCustomerFromList() {
-  await startNewInvoice();
-  goToInvoice();
+// (Saving a customer doesn't require issuance — the Save button on
+// the buyer combo writes to the customers table directly.)
+function newCustomerFromList() {
+  const d = newDraft({});
+  openDraft(d.local_id);
   setTimeout(() => {
     document.getElementById('b-name')?.focus();
   }, 50);
@@ -3259,20 +4098,23 @@ async function newInvoiceForCurrentCompany() {
   await startNewInvoiceForCompany(_currentCompanyDetailId);
 }
 
-async function startNewInvoiceForCompany(companyId) {
-  await startNewInvoice();
+function startNewInvoiceForCompany(companyId) {
   const c = (companies || []).find(x => x.id === companyId);
-  if (!c) { goToInvoice(); return; }
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
-  set('s-name',  c.name);
-  set('s-addr',  c.address);
-  set('s-phone', c.phone);
-  set('s-email', c.email);
-  const indChk = document.getElementById('chk-individual-disclaimer');
-  if (indChk) indChk.checked = !!c.individual_disclaimer;
-  selCompId = companyId;
-  if (typeof recalc === 'function') recalc();
-  goToInvoice();
+  const seed = c ? {
+    seller: {
+      name:    c.name || '',
+      address: c.address || '',
+      phone:   c.phone || '',
+      email:   c.email || '',
+    },
+    individual_disclaimer: !!c.individual_disclaimer,
+  } : {};
+  const d = newDraft(seed);
+  if (companyId) {
+    drafts[d.local_id].company_id = companyId;
+    persistDraftsNow();
+  }
+  openDraft(d.local_id);
 }
 
 function editCurrentCompanyInSettings() {
@@ -3682,29 +4524,15 @@ function renderHomePage() {
     </section>`;
 }
 
-// "+ New invoice" tile on home — clear the editor then route to it.
-async function newInvoiceFromHome() {
-  await startNewInvoice();
-  goToInvoice();
+// "+ New invoice" tile on home — create a fresh v2 draft, route to it.
+function newInvoiceFromHome() {
+  const d = newDraft({});
+  openDraft(d.local_id);
 }
 
-// Preload invoices on boot so the list is ready when opened. Wrapped so a
-// failure doesn't break the editor.
-(async function bootInvoicePreload() {
-  try {
-    // Wait one tick so supabase init has a chance to complete.
-    setTimeout(async () => {
-      try {
-        await loadInvoices();
-        // Now that we have the authoritative list, recompute the next
-        // invoice number — but only when the editor is on a fresh draft.
-        // (If the user is editing a saved record we must not touch the
-        // form's number field.)
-        if (editor.mode === 'new' && Array.isArray(invoices) && invoices.length > 0) {
-          setInvoiceNumber(computeNextInvoiceNumber());
-        }
-      } catch {}
-    }, 800);
-  } catch {}
-})();
+// bootInvoicePreload: removed in the redraft. Invoices are now loaded
+// synchronously in DOMContentLoaded so the Home / Drafts / Issue
+// next-number compute all see the authoritative list before the user
+// can act. Routes that need the latest list (Home, list pages,
+// detail) re-fetch on enter.
 
