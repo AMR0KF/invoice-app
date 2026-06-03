@@ -554,8 +554,12 @@ def generate():
 def generate_pdf():
     data = request.json or {}
     try:
-        settings = get_settings()
-        invoice_number = settings.get("next_invoice_number") or data.get("invoice_number") or "INV-001"
+        # Honor the number the client sends. The client computes the next
+        # number from the invoices list and is the single source of truth
+        # (matches Vercel/api/generate-pdf.js). The old server-side counter
+        # in settings.json caused the PDF header to show a stale number
+        # (e.g. INV-091) that diverged from the saved invoice row.
+        invoice_number = data.get("invoice_number") or "INV-001"
         data["invoice_number"] = invoice_number
         result = subprocess.run(
             ["node", str(BASE / "generate_pdf.js")],
@@ -571,9 +575,7 @@ def generate_pdf():
         if result.returncode != 0:
             return jsonify({"error": result.stderr or "PDF generation failed"}), 500
         filename = Path(result.stdout.strip()).name
-        settings["next_invoice_number"] = next_invoice_number(invoice_number)
-        save_settings(settings)
-        return jsonify({"ok": True, "filename": filename, "invoice_number": invoice_number, "next_invoice_number": settings["next_invoice_number"]})
+        return jsonify({"ok": True, "filename": filename, "invoice_number": invoice_number})
     except subprocess.TimeoutExpired:
         return jsonify({"error": "PDF generation timed out. Please try again."}), 504
     except Exception as e:
@@ -581,15 +583,13 @@ def generate_pdf():
 
 @app.route("/api/print-preview", methods=["POST"])
 def create_print_preview():
-    data = request.json
-    settings = get_settings()
-    invoice_number = settings.get("next_invoice_number") or data.get("invoice_number") or "INV-001"
+    data = request.json or {}
+    # Honor the client-sent number here too (see generate_pdf above).
+    invoice_number = data.get("invoice_number") or "INV-001"
     data["invoice_number"] = invoice_number
     job_id = str(uuid.uuid4())[:10]
     save_json(PRINTS / f"{job_id}.json", data)
-    settings["next_invoice_number"] = next_invoice_number(invoice_number)
-    save_settings(settings)
-    return jsonify({"ok": True, "url": f"/print/{job_id}", "invoice_number": invoice_number, "next_invoice_number": settings["next_invoice_number"]})
+    return jsonify({"ok": True, "url": f"/print/{job_id}", "invoice_number": invoice_number})
 
 @app.route("/print/<job_id>")
 def print_preview(job_id):

@@ -1,6 +1,11 @@
 /* ── Reset & Base ──────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* HTML5 `hidden` attribute must always win, even on elements whose
+   per-class CSS sets `display: flex/grid/block`. Without this, setting
+   `.hidden = true` on a `.gen-btn` (display: flex) leaves it visible. */
+[hidden] { display: none !important; }
+
 :root {
   --bg:       #1b1f2a;
   --surface:  #252a36;
@@ -161,12 +166,14 @@ body.light-theme .mobile-action-bar {
   background: rgba(255,255,255,.96);
   border-top-color: #d7dce5;
 }
-body.auth-locked .container,
-body.auth-locked #view-invoice,
-body.auth-locked #view-settings,
+/* When the auth gate is up, hide the top-bar chrome (nav, action icons,
+   bottom mobile bar). The main content views are NOT hidden here — the
+   auth modal's opaque backdrop (below) covers them. Hiding #view-invoice
+   used to blank the draft editor whenever auth-locked lingered (expired
+   or still-resolving session), since #view-invoice is now the editor. */
 body.auth-locked .mobile-action-bar,
 body.auth-locked .topbar-nav,
-body.auth-locked #inv-counter,
+body.auth-locked .topbar-menu-btn,
 body.auth-locked .topbar-actions .icon-btn {
   display: none !important;
 }
@@ -618,8 +625,9 @@ body.show-discount td.discount-col { display: table-cell; }
 #auth-modal {
   align-items: center;
   padding: 24px;
-  /* Auth modal uses the same ambient mesh as the rest of the app so the
-     glass dialog above it has consistent refractive material to bend. */
+  /* Ambient mesh over an opaque var(--bg) base — fully covers the content
+     views behind it, so the auth gate no longer needs to display:none
+     #view-invoice (which used to blank the draft editor). */
   background:
     radial-gradient(circle at 16% 18%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 38%),
     radial-gradient(circle at 84% 12%, color-mix(in srgb, var(--accent2) 22%, transparent), transparent 34%),
@@ -2572,11 +2580,25 @@ body.light-theme .status-side-actions .ghost-btn.danger { color: #b42318; }
   }
 }
 
-/* Hide bottom action bar on invoice + customer views */
+/* The bottom action bar (Save & Print) is meaningful ONLY while editing a
+   draft. Hide it everywhere else — including the read-only invoice detail,
+   which reuses #view-invoice, and all the hub/list pages. */
 body.on-invoices .mobile-action-bar,
-body.on-customer .mobile-action-bar { display: none !important; }
+body.on-customer .mobile-action-bar,
+body.on-customers .mobile-action-bar,
+body.on-companies .mobile-action-bar,
+body.on-financial .mobile-action-bar,
+body.on-home .mobile-action-bar,
+body.on-drafts .mobile-action-bar,
+body.on-invoice-view .mobile-action-bar { display: none !important; }
 body.on-invoices,
-body.on-customer { padding-bottom: 0 !important; }
+body.on-customer,
+body.on-customers,
+body.on-companies,
+body.on-financial,
+body.on-home,
+body.on-drafts,
+body.on-invoice-view { padding-bottom: 0 !important; }
 
 /* Mobile */
 @media (max-width: 720px) {
@@ -2648,46 +2670,54 @@ body.on-customer { padding-bottom: 0 !important; }
 
 /* Hamburger menu button — hidden on desktop, shown on mobile.
    Wired by index.html#topbar-menu-btn. */
+/* Hamburger button: hidden on desktop, shown on mobile. */
 .topbar-menu-btn { display: none; }
 
-/* Mobile slide-down drawer — hidden on desktop, shown when toggled. */
+/* Mobile slide-down drawer. Visibility is driven SOLELY by the `hidden`
+   attribute (toggled in JS) — the global `[hidden] { display:none }`
+   rule hides it, and `:not([hidden])` shows it as a flex column. No
+   base `display:none` here, or it would override the shown state. */
 .mobile-nav-drawer {
-  display: none;
   flex-direction: column;
   gap: 2px;
   position: fixed;
-  top: 56px;
-  left: 12px;
-  right: 12px;
-  z-index: 90;
-  padding: 10px;
-  border-radius: 12px;
+  top: 54px;
+  left: 10px;
+  right: 10px;
+  z-index: 1200;
+  padding: 8px;
+  border-radius: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  box-shadow: 0 16px 48px rgba(0,0,0,.45);
 }
-.mobile-nav-drawer[hidden] { display: none !important; }
+.mobile-nav-drawer:not([hidden]) { display: flex; }
 .mobile-nav-item {
   appearance: none;
   background: transparent;
   border: 0;
   text-align: left;
-  padding: 10px 14px;
+  padding: 13px 16px;
   font: inherit;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
 }
-.mobile-nav-item:hover { background: var(--surface2); }
+.mobile-nav-item:active { background: var(--surface2); }
 .mobile-nav-item.active { background: var(--accent); color: #fff; }
 
-@media (max-width: 880px) {
+/* Mobile breakpoint matches the app's nav-hide breakpoint (720px): the
+   full segmented nav pill is hidden there, so the hamburger takes over. */
+@media (max-width: 720px) {
   .topbar-menu-btn { display: inline-flex; }
 }
-@media (min-width: 881px) {
+/* Above the breakpoint the full nav pill is visible, so the drawer +
+   hamburger never show even if the hidden attribute were removed. */
+@media (min-width: 721px) {
   .mobile-nav-drawer { display: none !important; }
+  .topbar-menu-btn   { display: none !important; }
 }
 
 /* ── Home page ───────────────────────────────────────────────────── */
@@ -2818,6 +2848,15 @@ body.on-customer { padding-bottom: 0 !important; }
   transition: background .15s, border-color .15s;
 }
 .customer-card:hover { background: var(--surface); border-color: var(--border2); }
+/* Pinned "Individual / no company" default entry — accent-tinted so it
+   reads as a built-in option, not a saved profile. */
+.customer-card.company-individual {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface2));
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+body.light-theme .customer-card.company-individual {
+  background: color-mix(in srgb, var(--accent) 8%, #ffffff);
+}
 .customer-card-name {
   display: flex; flex-direction: column; gap: 2px; min-width: 0;
 }

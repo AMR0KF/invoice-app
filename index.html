@@ -24,13 +24,6 @@
     <button class="nav-link" data-route="financial" type="button" onclick="openFinancial()">Financial</button>
     <button class="nav-link" data-route="settings"  type="button" onclick="openSettings()">Settings</button>
   </nav>
-  <button class="icon-btn topbar-menu-btn" id="topbar-menu-btn" type="button" onclick="toggleMobileNav()" aria-label="Menu" title="Menu">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <line x1="3" y1="6"  x2="21" y2="6"></line>
-      <line x1="3" y1="12" x2="21" y2="12"></line>
-      <line x1="3" y1="18" x2="21" y2="18"></line>
-    </svg>
-  </button>
   <div class="topbar-spacer"></div>
   <div class="topbar-actions">
     <button class="auth-pill" id="supabase-auth-btn" type="button" onclick="openAuthModal()">Local data</button>
@@ -41,24 +34,17 @@
         <line x1="21" y1="12" x2="9" y2="12"></line>
       </svg>
     </button>
-    <button class="icon-btn topbar-list-btn" id="topbar-list-btn" type="button" onclick="toggleInvoicesRoute()" aria-label="Invoice list" title="Invoices">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <line x1="8" y1="6"  x2="20" y2="6"></line>
-        <line x1="8" y1="12" x2="20" y2="12"></line>
-        <line x1="8" y1="18" x2="20" y2="18"></line>
-        <circle cx="4" cy="6"  r="1"></circle>
-        <circle cx="4" cy="12" r="1"></circle>
-        <circle cx="4" cy="18" r="1"></circle>
+    <!-- Hamburger: mobile only. Opens the slide-down nav drawer. -->
+    <button class="icon-btn topbar-menu-btn" id="topbar-menu-btn" type="button" onclick="toggleMobileNav()" aria-label="Menu" aria-expanded="false" title="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="3" y1="6"  x2="21" y2="6"></line>
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
       </svg>
     </button>
-    <button class="icon-btn topbar-settings-btn" id="topbar-settings-btn" type="button" onclick="toggleSettingsRoute()" aria-label="Settings" title="Settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path>
-      </svg>
-    </button>
-    <div style="font-size:11px;color:var(--text3);" id="inv-counter">INV-001</div>
   </div>
+  <!-- Legacy counter kept hidden: setInvoiceNumber writes to it. -->
+  <div id="inv-counter" hidden></div>
 </div>
 
 <div class="modal-backdrop" id="auth-modal" onclick="closeAuthOnBackdrop(event)" aria-hidden="true">
@@ -361,16 +347,16 @@
       <strong id="issue-card-number">INV-001</strong>
     </div>
     <button class="gen-btn issue-btn" id="issue-btn" onclick="issueDraft()">
-      Issue (PDF) / إصدار الفاتورة
+      Save &amp; Print / حفظ وطباعة
     </button>
     <button class="ghost-btn" id="discard-btn" onclick="discardCurrentDraft()">
       Discard draft
     </button>
   </div>
-  <button class="gen-btn" id="gen-btn" onclick="generateInvoice()">
+  <button class="gen-btn" id="gen-btn" onclick="generateInvoice()" hidden>
     Generate Invoice (PDF) / إنشاء الفاتورة
   </button>
-  <button class="gen-btn pdf-btn" onclick="printPdfInvoice()">
+  <button class="gen-btn pdf-btn" id="print-btn" onclick="printPdfInvoice()" hidden>
     Print PDF preview / طباعة PDF
   </button>
   <div class="side-section">
@@ -456,12 +442,10 @@
 <div class="mobile-action-bar" aria-label="Mobile invoice actions">
   <div class="mobile-bar-meta">
     <strong id="mobile-total">USD 0.00</strong>
-    <span id="mobile-pdf-status">No PDF generated yet</span>
+    <span id="mobile-pdf-status">Draft</span>
   </div>
   <div class="mobile-actions">
-    <button class="mobile-action-btn primary" id="mobile-pdf-btn" type="button" onclick="generateMobilePdf()">Preview PDF</button>
-    <button class="mobile-action-btn" id="mobile-open-btn" type="button" onclick="openLastPdf()" disabled>Open</button>
-    <button class="mobile-action-btn" id="mobile-share-btn" type="button" onclick="shareMobilePdf()" disabled>Share</button>
+    <button class="mobile-action-btn primary" id="mobile-issue-btn" type="button" onclick="issueDraft()">Save &amp; Print</button>
   </div>
 </div>
 </section>

@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 server-test.*.log
 server-glass.*.log
+server-debug.*.log
 data/output/
 data/print_jobs/
 data/settings.json

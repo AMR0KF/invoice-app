@@ -697,11 +697,31 @@ function toggleMobileNav() {
   const d = document.getElementById('mobile-nav-drawer');
   if (!d) return;
   d.hidden = !d.hidden;
+  const btn = document.getElementById('topbar-menu-btn');
+  if (btn) btn.setAttribute('aria-expanded', String(!d.hidden));
+  // Highlight the active route in the drawer when opening.
+  if (!d.hidden) {
+    const active = navHighlightFor(currentRouteName());
+    d.querySelectorAll('.mobile-nav-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.route === active);
+    });
+  }
 }
 function closeMobileNav() {
   const d = document.getElementById('mobile-nav-drawer');
   if (d) d.hidden = true;
+  const btn = document.getElementById('topbar-menu-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
 }
+
+// Tapping outside the open drawer closes it.
+document.addEventListener('click', (e) => {
+  const d = document.getElementById('mobile-nav-drawer');
+  if (!d || d.hidden) return;
+  const btn = document.getElementById('topbar-menu-btn');
+  if (d.contains(e.target) || (btn && btn.contains(e.target))) return;
+  closeMobileNav();
+});
 
 window.addEventListener('hashchange', routeView);
 
@@ -1099,16 +1119,19 @@ async function initSupabaseAuth() {
       if (supabaseUser) {
         await loadRemoteDocumentSettings();
         if (!rowCount) addRow();
-        await loadInvoiceNumber();
         await loadCompanies();
         await loadCustomers();
+        await loadInvoices();   // pull the signed-in user's invoices
+        routeView();            // re-render the active view with loaded data
       } else {
         companies = [];
         customers = [];
+        invoices = [];
         selCompId = null;
         selCustId = null;
         renderDropdown('company');
         renderDropdown('customer');
+        routeView();
       }
     });
   } catch (err) {
@@ -1160,9 +1183,10 @@ async function signInSupabase() {
     closeAuthModal(true);
     await loadRemoteDocumentSettings();
     if (!rowCount) addRow();
-    await loadInvoiceNumber();
     await loadCompanies();
     await loadCustomers();
+    await loadInvoices();   // pull the signed-in user's invoices
+    routeView();            // re-render the active view with loaded data
     toast('Signed in', 'success');
   } catch (err) {
     toast(err.message || 'Sign in failed', 'error');
@@ -1635,11 +1659,31 @@ async function patchInvoice(id, fields) {
   _saveInvoicesLS(invoices);
 
   if (supabaseActive()) {
-    const { error } = await supabaseClient
-      .from('invoices')
-      .update({ ...fields, history: hist })
-      .eq('id', id);
-    if (error) { console.warn('Invoice patch failed:', error.message); await loadInvoices(); }
+    // Same schema-cache tolerance as insertInvoiceRow: if the DB
+    // complains about an optional column not in its cache (migration
+    // not applied / cache stale), drop just that column and retry so
+    // the rest of the patch (e.g. status='void') still lands. The
+    // optimistic in-memory update already reflects the full intent.
+    const OPTIONAL_COLUMNS = ['superseded_by', 'company_id', 'sent_at'];
+    let payload = { ...fields, history: hist };
+    let succeeded = false;
+    for (let attempt = 0; attempt < OPTIONAL_COLUMNS.length + 1; attempt++) {
+      const { error } = await supabaseClient
+        .from('invoices')
+        .update(payload)
+        .eq('id', id);
+      if (!error) { succeeded = true; break; }
+      const m = String(error.message || '').match(/'([a-z_]+)' column/i);
+      const offending = m ? m[1] : null;
+      if (offending && OPTIONAL_COLUMNS.includes(offending) && offending in payload) {
+        delete payload[offending];
+        continue;
+      }
+      console.warn('Invoice patch failed:', error.message);
+      await loadInvoices();
+      break;
+    }
+    void succeeded;
   } else {
     try { await API('PATCH', '/api/invoices/' + encodeURIComponent(id), { ...fields, history: hist }); }
     catch { /* localStorage already updated */ }
@@ -2311,6 +2355,12 @@ function bindEditorToDraft(local_id) {
     _draftRestoring = false;
   }
   applyPayloadToForm(d);
+  // Rehydrate the selected-customer / selected-company globals from the
+  // draft's stashed links (resetEditorForm nulled them). Keeps the
+  // autocomplete UI in sync and ensures the issued invoice keeps the
+  // link even if the user never re-touches the combo (H4 in the audit).
+  selCustId = d.customer_id || null;
+  selCompId = d.company_id || null;
   refreshDraftEditorChrome();
 }
 
@@ -2400,6 +2450,7 @@ function writeEditingDraft() {
 const ISSUE_MAX_RETRIES = 5;
 
 async function issueDraft() {
+  if (_issueBusy) return;   // re-entry guard (mobile double-tap, slow render)
   if (!editingDraftId) return;
   const draft = getDraft(editingDraftId);
   if (!draft) { toast('No draft to issue', 'error'); return; }
@@ -2412,13 +2463,11 @@ async function issueDraft() {
 
   const previewNumber = computeNextInvoiceNumber();
   const buyerLabel = draft.buyer?.name || '(no buyer)';
-  if (!confirm(`Issue ${previewNumber} to ${buyerLabel}?\n\nThis assigns the number, generates the PDF, and saves the invoice.`)) {
+  if (!confirm(`Save ${previewNumber} to ${buyerLabel} and open for printing?`)) {
     return;
   }
 
-  const btn = document.getElementById('issue-btn');
-  const previousLabel = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = 'Issuing…'; }
+  setIssueBusy(true);
 
   try {
     // Build the payload the renderer expects. The draft is numberless;
@@ -2476,13 +2525,33 @@ async function issueDraft() {
       invoiceNumber: saved.number,
       isObjectUrl: !!pdfInfo.isObjectUrl,
     });
-    toast(supersedesId ? `${saved.number} issued (replaces voided original)` : `${saved.number} issued`, 'success');
+    // Save + print in one step: open the PDF in a new tab so the user
+    // can hit Ctrl+P. Saved invoice detail opens in the current tab.
+    try { window.open(pdfInfo.url, '_blank'); } catch {}
+    toast(supersedesId
+      ? `${saved.number} saved — replaces voided original. PDF opened for printing.`
+      : `${saved.number} saved. PDF opened for printing.`, 'success');
     openInvoiceDetail(saved.id);
   } catch (err) {
-    toast(err && err.message ? `Issue failed: ${err.message}` : 'Issue failed', 'error');
+    toast(err && err.message ? `Save failed: ${err.message}` : 'Save failed', 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = previousLabel || 'Issue (PDF) / إصدار الفاتورة'; }
+    setIssueBusy(false);
   }
+}
+
+// Toggle BOTH issue buttons (desktop #issue-btn + mobile #mobile-issue-btn)
+// together. This is also the single re-entry guard: while busy, both are
+// disabled so a frozen-looking mobile tap can't double-fire. Fixes the
+// "mobile button does nothing / freezes" symptom (H1 in the flow audit).
+let _issueBusy = false;
+function setIssueBusy(busy) {
+  _issueBusy = !!busy;
+  [['issue-btn', 'Save & Print / حفظ وطباعة'], ['mobile-issue-btn', 'Save & Print']].forEach(([id, label]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = busy;
+    el.textContent = busy ? 'Saving…' : label;
+  });
 }
 
 function isUniqueViolation(err) {
@@ -2507,8 +2576,11 @@ function buildIssueRecord(draft, number, pdfInfo) {
     status:      'issued',
     date:        payload.date,
     due_date:    payload.due_date,
-    customer_id: selCustId || null,
-    company_id:  selCompId || null,
+    // Prefer the link stashed on the draft (set when seeding "for
+    // customer/company X") over the transient globals, which
+    // resetEditorForm nulls when the draft is opened (H4 in the audit).
+    customer_id: draft.customer_id || selCustId || null,
+    company_id:  draft.company_id  || selCompId || null,
     buyer:       payload.buyer,
     seller:      payload.seller,
     total,
@@ -2528,7 +2600,14 @@ async function insertInvoiceRow(record) {
     return await saveInvoice(record);
   }
   const nowIso = new Date().toISOString();
-  const base = {
+  // Optional columns added by later migrations. We start by sending
+  // them all; if Supabase says a column doesn't exist in its schema
+  // cache (typical when a migration hasn't been applied yet OR the
+  // PostgREST cache hasn't refreshed), we drop just that column and
+  // retry. The user can apply the relevant migration later without
+  // blocking issuance.
+  const OPTIONAL_COLUMNS = ['company_id', 'superseded_by', 'sent_at'];
+  const fullBase = {
     number:   record.number,
     status:   record.status || 'issued',
     date:     record.date,
@@ -2543,18 +2622,43 @@ async function insertInvoiceRow(record) {
     history:  record.history || [],
     sent_at:  nowIso,
   };
-  const { data, error } = await supabaseClient
-    .from('invoices')
-    .insert({ ...base, user_id: supabaseUser.id })
-    .select('*')
-    .single();
-  if (error) {
+  let base = { ...fullBase };
+  const dropped = [];
+  // Retry up to OPTIONAL_COLUMNS.length+1 times, each iteration drops
+  // one column the schema cache complained about and tries again.
+  for (let attempt = 0; attempt < OPTIONAL_COLUMNS.length + 1; attempt++) {
+    const { data, error } = await supabaseClient
+      .from('invoices')
+      .insert({ ...base, user_id: supabaseUser.id })
+      .select('*')
+      .single();
+    if (!error) {
+      if (dropped.length) {
+        console.warn('Invoice insert succeeded after dropping columns:', dropped.join(', '),
+          '— apply the missing migrations in supabase/migrations/ to enable them.');
+      }
+      invoices.unshift(data);
+      return data;
+    }
+    // 23505 unique violation: rethrow for issueDraft's retry-with-next-number.
+    if (error.code === '23505') {
+      const e = new Error(error.message); e.code = error.code; throw e;
+    }
+    // PGRST204: PostgREST schema cache miss for an unknown column.
+    // The error message is "Could not find the 'X' column ...".
+    const m = String(error.message || '').match(/'([a-z_]+)' column/i);
+    const offending = m ? m[1] : null;
+    if (offending && OPTIONAL_COLUMNS.includes(offending) && offending in base) {
+      delete base[offending];
+      dropped.push(offending);
+      continue;
+    }
+    // Different error or non-optional column — surface to caller.
     const e = new Error(error.message || 'Insert failed');
     e.code = error.code;
     throw e;
   }
-  invoices.unshift(data);
-  return data;
+  throw new Error('Invoice insert exhausted retry budget');
 }
 
 // Render PDF from a payload (used by Issue). Reuses the existing
@@ -2655,8 +2759,8 @@ function setInvoiceViewerChrome(inv) {
   const isVoid  = inv.status === 'void';
   const isDraft = inv.status === 'draft';
   const payAction = isPaid
-    ? `<button class="ghost-btn" type="button" onclick="markUnpaid('${escapeHtml(inv.id)}'); renderInvoiceDetail('${escapeHtml(inv.id)}')">Unpay</button>`
-    : `<button class="ghost-btn" type="button" onclick="markInvoicePaid('${escapeHtml(inv.id)}'); renderInvoiceDetail('${escapeHtml(inv.id)}')">Mark paid</button>`;
+    ? `<button class="ghost-btn" type="button" onclick="markUnpaid('${escapeHtml(inv.id)}')">Unpay</button>`
+    : `<button class="ghost-btn" type="button" onclick="markInvoicePaid('${escapeHtml(inv.id)}')">Mark paid</button>`;
   const voidAction = (isVoid || isDraft) ? '' :
     `<button class="ghost-btn danger" type="button" onclick="voidInvoiceFromDetail('${escapeHtml(inv.id)}')">Void</button>`;
   const editAction = isVoid ? '' :
@@ -3056,17 +3160,28 @@ async function requestPdfGeneration(data) {
   const endpoints = ['/api/generate-pdf', '/api/generate'];
   let lastError = null;
 
+  // Each endpoint gets a bounded wait via AbortController (mirrors the
+  // API() helper). Without this a stalled render hangs the await forever
+  // and the issue button looks frozen (H2 in the flow audit).
+  const PDF_TIMEOUT_MS = 25000;
   for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PDF_TIMEOUT_MS);
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: payload,
+        signal: controller.signal,
       });
       if (response.ok) return response;
       lastError = new Error(`${endpoint} returned ${response.status}`);
     } catch (err) {
-      lastError = new Error(`${endpoint} failed`);
+      lastError = err && err.name === 'AbortError'
+        ? new Error(`${endpoint} timed out after ${PDF_TIMEOUT_MS / 1000}s`)
+        : new Error(`${endpoint} failed`);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -3491,14 +3606,27 @@ function loadInvoiceIntoEditor(inv) {
   if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
 }
 
+// Re-render whichever invoice-bearing view is currently active. Used
+// after status patches so the change is reflected wherever the user is
+// — the list, a customer/company detail, or the invoice detail page.
+function rerenderActiveInvoiceView() {
+  const route = currentRouteName();
+  if (route === 'invoices')        { renderInvoicesPage(); return; }
+  if (route === 'invoice-detail')  { renderInvoiceDetail(viewingInvoiceId); return; }
+  if (route === 'customer-detail') { renderCustomerDetail(_currentCustomerDetailId); return; }
+  if (route === 'company-detail')  { renderCompanyDetail(_currentCompanyDetailId); return; }
+  if (route === 'home')            { renderHomePage(); return; }
+  if (route === 'financial')       { renderFinancialPage(); return; }
+}
+
 async function markInvoicePaid(id) {
   await patchInvoice(id, { status: 'paid' });
-  renderInvoicesPage();
+  rerenderActiveInvoiceView();
   toast('Marked paid', 'success');
 }
 async function markUnpaid(id) {
   await patchInvoice(id, { status: 'issued', paid_at: null });
-  renderInvoicesPage();
+  rerenderActiveInvoiceView();
   toast('Reverted to issued', 'success');
 }
 async function deleteInvoiceFromList(id) {
@@ -3520,35 +3648,22 @@ async function deleteInvoiceFromList(id) {
   toast('Invoice deleted', 'success');
 }
 
-// Duplicate from a list row → opens the editor as a fresh draft prepopulated
-// from the source invoice's payload. New number, today's date, status=draft.
-async function duplicateInvoiceFromList(id) {
-  const inv = invoices.find(r => r.id === id);
-  if (!inv) return;
-  duplicateFromPayload(inv.payload || {});
-  goToInvoice();
-  toast(`Duplicated ${inv.number} into a new draft`, 'success');
+// Duplicate from a list row → v2 flow: clone the payload into a new
+// draft (numberless) and open it in the editor.
+function duplicateInvoiceFromList(id) {
+  duplicateInvoiceToDraft(id);
 }
 
-function duplicateFromPayload(payload) {
-  setEditorMode('new');           // creating a new record on next gen
-  currentInvoiceStatus = 'draft';
-  currentInvoicePaidDate = null;
-  const clone = JSON.parse(JSON.stringify(payload || {}));
-  // Reset the per-invoice scalars: date, due, number stay default; status reset.
-  clone.invoice_number = document.getElementById('inv-num')?.value || 'INV-001';
-  clone.date = new Date().toISOString().slice(0, 10);
-  const net = Math.max(0, parseInt(clone.buyer?.net_terms_days ?? 30, 10) || 30);
-  clone.due_date = new Date(Date.now() + net * 864e5).toISOString().slice(0, 10);
-  clone.status = 'draft';
-  clone.paid_date = null;
-  applyPayloadToForm(clone);
-  if (typeof renderInvoiceStatus === 'function') renderInvoiceStatus();
-}
-
-// Editor sidebar: "Duplicate this invoice" button.
+// Legacy "Duplicate this invoice" button still present in the static
+// #invoice-status-section markup. That section is hidden in draft mode
+// and innerHTML-replaced in detail mode, so this is effectively dead —
+// but keep it functional (clone the current editor form into a new
+// draft) to avoid a ReferenceError if it's ever reached.
 function duplicateCurrentInvoice() {
-  duplicateFromPayload(collectData());
+  const data = collectData();
+  delete data.invoice_number;
+  const d = newDraft(data);
+  openDraft(d.local_id);
   toast('Duplicated into a new draft', 'success');
 }
 
@@ -3713,32 +3828,25 @@ async function bulkMarkPaid() {
 }
 async function bulkDuplicate() {
   const ids = Array.from(invSelection);
+  let made = 0;
   for (const id of ids) {
     const inv = invoices.find(r => r.id === id);
     if (!inv) continue;
-    // For bulk duplicate, save each as a new draft record directly — we
-    // can't open the editor for every one. Instead create draft records.
-    const payload = JSON.parse(JSON.stringify(inv.payload || {}));
-    payload.status = 'draft';
-    payload.invoice_number = nextInvoiceNumber(payload.invoice_number || 'INV-001');
-    payload.date = new Date().toISOString().slice(0, 10);
-    await saveInvoice({
-      number: payload.invoice_number,
-      status: 'draft',
-      date: payload.date,
-      due_date: null,
-      customer_id: inv.customer_id,
-      buyer: payload.buyer,
-      seller: payload.seller,
-      total: Number(inv.total) || 0,
-      currency: payload.currency || 'USD',
-      payload,
-      history: [],
-    });
+    // v2 model: duplicates are local drafts (numberless), not server
+    // rows. Each becomes a fresh draft seeded from the source payload.
+    const seed = JSON.parse(JSON.stringify(inv.payload || {}));
+    delete seed.invoice_number;
+    seed.date = new Date().toISOString().slice(0, 10);
+    delete seed.due_date;
+    const d = newDraft(seed);
+    if (inv.customer_id) drafts[d.local_id].customer_id = inv.customer_id;
+    if (inv.company_id)  drafts[d.local_id].company_id  = inv.company_id;
+    made++;
   }
+  persistDraftsNow();
   invSelection.clear();
   renderInvoicesPage();
-  toast(`Duplicated ${ids.length} invoices`, 'success');
+  toast(`Created ${made} draft${made === 1 ? '' : 's'} from selection`, 'success');
 }
 async function bulkDelete() {
   const ids = Array.from(invSelection);
@@ -3997,7 +4105,22 @@ function invoicesForCompany(company) {
 }
 
 function companyRollup(company) {
-  const invs = invoicesForCompany(company);
+  return rollupForInvoices(invoicesForCompany(company));
+}
+
+// Invoices issued with NO company — the "Individual / no company"
+// bucket. A row counts as individual when it has no company_id link
+// AND no seller name in its payload. Pre-migration rows (no company_id)
+// with an empty seller fall in here too.
+function individualInvoices() {
+  return (invoices || []).filter(r => {
+    if (r.company_id) return false;
+    const sellerName = String(r.payload?.seller?.name || r.seller?.name || '').trim();
+    return sellerName === '';
+  });
+}
+
+function rollupForInvoices(invs) {
   const byStatus = { draft: 0, issued: 0, paid: 0, overdue: 0, void: 0 };
   let totalBilled = 0;
   let outstanding = 0;
@@ -4014,6 +4137,13 @@ function companyRollup(company) {
     if (r.currency) currency = r.currency;
   });
   return { totalBilled, outstanding, lastDate, byStatus, currency, count: invs.length, invs };
+}
+
+// Start a fresh draft with NO seller/company — an individual invoice.
+// Clears any seller fields so the PDF prints without a company header.
+function startIndividualInvoice() {
+  const d = newDraft({ seller: { name: '', address: '', phone: '', email: '' } });
+  openDraft(d.local_id);
 }
 
 function renderCompaniesPage() {
@@ -4033,15 +4163,39 @@ function renderCompaniesPage() {
   const sub = document.getElementById('companies-list-sub');
   if (sub) sub.textContent = `${companies.length} company profile${companies.length === 1 ? '' : 's'} · ${rows.length} shown`;
 
+  // Pinned "Individual / no company" card — always first, always present
+  // (it's the default seller). Hidden only when a search term excludes it.
+  const showIndividual = !search || 'individual no company'.includes(search);
+  const ir = rollupForInvoices(individualInvoices());
+  const individualCard = showIndividual ? `
+    <div class="customer-card company-individual" onclick="openCompanies()" style="cursor:default">
+      <div class="customer-card-name">
+        <strong>Individual / no company</strong>
+        <span class="meta">Invoice as yourself — no company header on the PDF</span>
+      </div>
+      <div class="customer-card-num">
+        <span class="label">Billed</span>
+        <span class="value">${fmtMoney(ir.totalBilled, ir.currency)}</span>
+      </div>
+      <div class="customer-card-num">
+        <span class="label">Outstanding</span>
+        <span class="value ${ir.outstanding > 0 ? 'outstanding' : 'zero'}">${fmtMoney(ir.outstanding, ir.currency)}</span>
+      </div>
+      <div class="customer-card-mix"><span class="chip">${ir.count} total</span></div>
+      <div class="customer-card-actions" onclick="event.stopPropagation()">
+        <button class="ghost-btn" type="button" onclick="startIndividualInvoice()">+ Invoice</button>
+      </div>
+    </div>` : '';
+
   if (rows.length === 0) {
-    list.innerHTML = `<div class="invoices-empty">
-      <strong>${companies.length === 0 ? 'No companies saved yet.' : 'No matches.'}</strong><br>
-      ${companies.length === 0 ? 'Add a seller profile in Settings → Companies.' : 'Adjust the search.'}
+    list.innerHTML = individualCard + `<div class="invoices-empty">
+      <strong>${companies.length === 0 ? 'No company profiles yet.' : 'No matches.'}</strong><br>
+      ${companies.length === 0 ? 'Add a seller profile in Settings → Companies, or invoice as an individual above.' : 'Adjust the search.'}
     </div>`;
     return;
   }
 
-  list.innerHTML = rows.map(c => {
+  list.innerHTML = individualCard + rows.map(c => {
     const r = c._r;
     const mixHtml = ['paid', 'issued', 'overdue', 'draft'].map(s => {
       const n = r.byStatus[s] || 0;

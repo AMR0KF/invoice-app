@@ -207,9 +207,22 @@ function renderLegacyTemplate(data, template) {
   const notesTitle = biLabel(lang, "NOTES", "\u0645\u0644\u0627\u062d\u0638\u0627\u062a");
   const showDiscount = totals.totalDisc > 0;
   const showInvoiceDiscount = totals.invoiceDiscount.enabled && totals.invoiceDiscount.amount > 0;
-  const sellerName = seller.name || "Company";
+  // Individual / no-company invoice: when the seller has no name, omit the
+  // company header AND the FROM party block entirely (no "Company"
+  // placeholder, no empty section).
+  const hasSeller = !!(seller.name && seller.name.trim());
+  const sellerName = seller.name || "";
   const sellerNameClass = hasArabic(sellerName) ? "company-title arabic-title" : "company-title";
   const sellerNameDir = hasArabic(sellerName) ? "rtl" : "auto";
+  const heroBrand = hasSeller
+    ? `<div class="brand"><div><h1 class="${sellerNameClass}" dir="${sellerNameDir}">${esc(sellerName)}</h1><p dir="auto">${esc(seller.email || "")}</p></div></div>`
+    : `<div class="brand"></div>`;
+  const meridianBrand = hasSeller
+    ? `<div><h1 class="${sellerNameClass}" dir="${sellerNameDir}">${esc(sellerName)}</h1><p dir="auto">${esc(seller.address || "")}</p><p dir="auto">${esc(seller.email || "")}</p></div>`
+    : `<div></div>`;
+  const partiesHtml = hasSeller
+    ? `<div class="parties"><div class="party party-from">${legacyPartyBlock(fromLabel, seller)}</div><div class="party party-bill">${legacyPartyBlock(billToLabel, buyer)}</div></div>`
+    : `<div class="parties parties-buyer-only"><div class="party party-bill">${legacyPartyBlock(billToLabel, buyer)}</div></div>`;
   const dueCard = due ? `<section><small>${esc(biLabel(lang, "DUE DATE", "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0627\u0633\u062a\u062d\u0642\u0627\u0642"))}</small><strong>${esc(due)}</strong></section>` : "";
   const metaBlock = dueCard ? `<div class="meta">${dueCard}</div>` : "";
   const discountHead = showDiscount ? `<th>${esc(thDisc)}</th>` : "";
@@ -345,6 +358,9 @@ body.meridian .meta section { background: transparent; border: 0; padding: 0; }
 small, .section-title { color: var(--brand); font-size: 7.5pt; font-weight: 800; letter-spacing: .08em; }
 .meta strong { display: block; margin-top: 2mm; font-size: 10pt; }
 .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; margin-bottom: 8mm; }
+/* Individual / no-company invoice: only the buyer block remains, so use a
+   single column instead of leaving an empty FROM cell. */
+.parties.parties-buyer-only { grid-template-columns: 1fr; }
 .party { border: 1px solid #edf0f4; border-radius: 2mm; padding: 5mm; min-height: 24mm; }
 body.aurora .parties { gap: 5mm; margin-top: 0; margin-bottom: 8mm; }
 body.aurora .party {
@@ -390,15 +406,15 @@ footer { position: absolute; left: 18mm; right: 18mm; bottom: 8mm; color: #c7cbd
 <body class="${esc(template)}">
 <main class="page">
   <header class="hero">
-    <div class="brand"><div><h1 class="${sellerNameClass}" dir="${sellerNameDir}">${esc(sellerName)}</h1><p dir="auto">${esc(seller.email || "")}</p></div></div>
+    ${heroBrand}
     <div class="invoice-id"><h2>${esc(invoiceTitle)}</h2><p>${invoiceNo}</p><p>${esc(biLabel(lang, "Issued", "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0625\u0635\u062f\u0627\u0631"))}: ${date}</p></div>
   </header>
   <header class="meridian-head">
-    <div><h1 class="${sellerNameClass}" dir="${sellerNameDir}">${esc(sellerName)}</h1><p dir="auto">${esc(seller.address || "")}</p><p dir="auto">${esc(seller.email || "")}</p></div>
+    ${meridianBrand}
     <div class="invoice-id"><p>${esc(invoiceTitle.toUpperCase())}</p><h2>${invoiceNo}</h2><p>${esc(biLabel(lang, "Issued", "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0625\u0635\u062f\u0627\u0631"))}: ${date}</p></div>
   </header>
   ${metaBlock}
-  <div class="parties"><div class="party party-from">${legacyPartyBlock(fromLabel, seller)}</div><div class="party party-bill">${legacyPartyBlock(billToLabel, buyer)}</div></div>
+  ${partiesHtml}
   <table><thead><tr><th>#</th><th>${esc(thDesc)}</th><th>${esc(thQty)}</th><th>${esc(thUnit)}</th>${discountHead}<th>${esc(thAmount)}</th></tr></thead><tbody>${rows}</tbody></table>
   <section class="bottom">
     <div class="notes"><div class="section-title">${esc(notesTitle)}</div><p dir="auto">${notesHtml}</p></div>
@@ -428,7 +444,9 @@ function renderAuroraV2(data) {
   const showInvoiceDiscount = totals.invoiceDiscount.enabled && totals.invoiceDiscount.amount > 0;
   const vatPct = Number(data.vat_pct) || 0;
 
-  const sellerName = seller.name || "Company";
+  // Individual / no-company invoice: omit the company name + FROM block.
+  const hasSeller = !!(seller.name && seller.name.trim());
+  const sellerName = seller.name || "";
   const sellerNameClass = hasArabic(sellerName) ? "brand-name arabic-title" : "brand-name";
   const sellerNameDir = hasArabic(sellerName) ? "rtl" : "auto";
 
@@ -573,6 +591,7 @@ body {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10mm;
   margin-bottom: 11mm;
 }
+.parties.parties-buyer-only { grid-template-columns: 1fr; }
 .party { padding-top: 4mm; border-top: 1px solid var(--ink); }
 .party-label {
   font-size: 7.2pt; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
@@ -645,13 +664,13 @@ body {
   <header class="header">
     <div class="brand">
       <div class="brand-mark">${esc(invoiceTitle)}</div>
-      ${logoHtml(seller)}
-      <h1 class="${sellerNameClass}" dir="${sellerNameDir}">${esc(sellerName)}</h1>
-      <div class="brand-meta">
+      ${hasSeller ? logoHtml(seller) : ""}
+      ${hasSeller ? `<h1 class="${sellerNameClass}" dir="${sellerNameDir}">${esc(sellerName)}</h1>` : ""}
+      ${hasSeller ? `<div class="brand-meta">
         ${seller.address ? `<div dir="auto">${esc(seller.address)}</div>` : ""}
         ${seller.phone ? `<div dir="auto">${esc(seller.phone)}</div>` : ""}
         ${seller.email ? `<div dir="auto">${esc(seller.email)}</div>` : ""}
-      </div>
+      </div>` : ""}
     </div>
     <div class="invoice-head">
       <p class="invoice-eyebrow">${esc(invoiceTitle)}</p>
@@ -663,8 +682,8 @@ body {
       </div>
     </div>
   </header>
-  <section class="parties">
-    ${partyHtml(fromLabel, seller)}
+  <section class="parties${hasSeller ? "" : " parties-buyer-only"}">
+    ${hasSeller ? partyHtml(fromLabel, seller) : ""}
     ${partyHtml(billToLabel, buyer)}
   </section>
   <table class="items-table">
@@ -853,15 +872,24 @@ async function buildPDFBuffer(data) {
   try {
     browser = await puppeteer.launch(await browserLaunchOptions());
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    // Use "domcontentloaded" (not "networkidle0") so a slow/blocked Google
+    // Fonts CDN can't stall the render indefinitely — the cause of the
+    // "PDF button freezes" symptom (H3 in the flow audit). The
+    // document.fonts.ready block below already gates on font readiness,
+    // and we bound BOTH setContent and the font wait with explicit
+    // timeouts so this can never hang past ~20s.
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 15000 });
     await page.evaluate(async () => {
       if (!document.fonts) return;
+      const withTimeout = (p, ms) => Promise.race([p, new Promise(r => setTimeout(r, ms))]);
       try {
-        await document.fonts.load('400 12pt "Noto Naskh Arabic"');
-        await document.fonts.load('700 12pt "Noto Naskh Arabic"');
-        await document.fonts.load('400 12pt "Inter"');
+        await withTimeout(Promise.all([
+          document.fonts.load('400 12pt "Noto Naskh Arabic"'),
+          document.fonts.load('700 12pt "Noto Naskh Arabic"'),
+          document.fonts.load('400 12pt "Inter"'),
+        ]), 6000);
       } catch (e) { /* ignore */ }
-      await document.fonts.ready;
+      await withTimeout(document.fonts.ready, 6000);
     });
     return await page.pdf({
       format: "A4",
