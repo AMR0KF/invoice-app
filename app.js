@@ -2625,13 +2625,21 @@ async function issueDraft() {
       invoiceNumber: saved.number,
       isObjectUrl: !!pdfInfo.isObjectUrl,
     });
-    // Save + print in one step: open the PDF in a new tab so the user
-    // can hit Ctrl+P. Saved invoice detail opens in the current tab.
-    try { window.open(pdfInfo.url, '_blank'); } catch {}
-    toast(supersedesId
-      ? `${saved.number} saved — replaces voided original. PDF opened for printing.`
-      : `${saved.number} saved. PDF opened for printing.`, 'success');
+    // Save + print/share in one step. The saved invoice detail opens in
+    // the current tab; the PDF surface depends on device:
+    //   - Mobile: show the in-app preview modal (canvas preview + native
+    //     Share sheet + Open). window.open just dumps the PDF into a web
+    //     viewer with no share path — the mobile regression we're fixing.
+    //   - Desktop: open the PDF in a new tab so the user can hit Ctrl+P.
     openInvoiceDetail(saved.id);
+    if (isMobileDevice()) {
+      openPdfPreview();
+    } else {
+      try { window.open(pdfInfo.url, '_blank'); } catch {}
+    }
+    toast(supersedesId
+      ? `${saved.number} saved — replaces voided original.`
+      : `${saved.number} saved.`, 'success');
   } catch (err) {
     toast(err && err.message ? `Save failed: ${err.message}` : 'Save failed', 'error');
   } finally {
@@ -2947,7 +2955,7 @@ function setInvoiceViewerChrome(inv) {
       <button class="ghost-btn" type="button" onclick="duplicateInvoiceToDraft('${escapeHtml(inv.id)}')">Duplicate</button>
       ${editAction}
       ${voidAction}
-      <button class="ghost-btn" type="button" onclick="openInvoicePdf('${escapeHtml(inv.id)}')">Open PDF</button>
+      <button class="ghost-btn" type="button" onclick="openInvoicePdf('${escapeHtml(inv.id)}')">${isMobileDevice() ? 'Preview / Share PDF' : 'Open PDF'}</button>
     </div>
     <p class="side-note" style="margin-top:10px">This is a read-only view of an issued invoice. To change it, use <strong>Edit</strong> — that creates a new draft and supersedes this one when issued.</p>`;
 }
@@ -3003,7 +3011,13 @@ async function openInvoicePdf(id) {
     const info = await renderPdfForData(data);
     if (!info) { toast('Could not render PDF', 'error'); return; }
     setLastGeneratedPdf({ ...info, invoiceNumber: inv.number });
-    window.open(info.url, '_blank');
+    // Mobile: in-app preview modal (preview + native Share + Open) so an
+    // old invoice can be re-shared/printed. Desktop: open in a new tab.
+    if (isMobileDevice()) {
+      openPdfPreview();
+    } else {
+      window.open(info.url, '_blank');
+    }
   } catch (err) {
     toast(`PDF render failed: ${err?.message || 'unknown'}`, 'error');
   }
