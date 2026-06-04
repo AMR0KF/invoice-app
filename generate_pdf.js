@@ -167,13 +167,21 @@ function fontDataUri(file) {
 }
 
 const EMBEDDED_FONT_CSS = (() => {
+  // Two embedded Arabic families, both required for the deploy to match local:
+  //   - "Noto Naskh Arabic" (R+B): body Arabic — parties, items, notes.
+  //   - "Amiri" (Bold): the decorative company-name TITLE (.arabic-title).
+  //     Locally this falls to Windows "Arabic Typesetting"; the server has
+  //     neither it nor a reliable Google-Fonts Amiri, so the Arabic company
+  //     name lost its calligraphic look. Embedding Amiri fixes it everywhere.
+  //     Titles are weight 700; the 400 700 range maps any title weight to it.
   const faces = [
-    { weight: 400, uri: fontDataUri("NotoNaskhArabic-Regular.ttf") },
-    { weight: 700, uri: fontDataUri("NotoNaskhArabic-Bold.ttf") },
+    { family: "Noto Naskh Arabic", weight: "400", uri: fontDataUri("NotoNaskhArabic-Regular.ttf") },
+    { family: "Noto Naskh Arabic", weight: "700", uri: fontDataUri("NotoNaskhArabic-Bold.ttf") },
+    { family: "Amiri", weight: "400 700", uri: fontDataUri("Amiri-Bold.ttf") },
   ].filter((f) => f.uri);
   if (!faces.length) return "";
   const rules = faces
-    .map((f) => `@font-face{font-family:"Noto Naskh Arabic";font-style:normal;font-weight:${f.weight};font-display:block;src:url(${f.uri}) format("truetype");}`)
+    .map((f) => `@font-face{font-family:"${f.family}";font-style:normal;font-weight:${f.weight};font-display:block;src:url(${f.uri}) format("truetype");}`)
     .join("");
   return `<style>${rules}</style>`;
 })();
@@ -364,7 +372,7 @@ body.meridian .page { border-left: 2mm solid var(--brand); padding: 18mm 18mm 16
 body.obsidian .page { border-left: 18mm solid #111827; }
 .brand { display: flex; gap: 4mm; align-items: center; min-height: 12mm; }
 .company-title { margin: 0; font-size: 14pt; }
-.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", "Noto Naskh Arabic", serif; font-size: 28pt; line-height: 1; font-weight: 700; }
+.arabic-title { font-family: "Amiri", "Arabic Typesetting", "Traditional Arabic", "Noto Naskh Arabic", serif; font-size: 28pt; line-height: 1; font-weight: 700; }
 .brand p, .invoice-id p { margin: 1mm 0 0; color: var(--muted); font-size: 8pt; }
 .invoice-id { text-align: right; }
 .invoice-id h2 { margin: 0; color: var(--brand-strong); font-size: 22pt; }
@@ -563,7 +571,7 @@ body {
 }
 [dir="auto"], [dir="rtl"], .ar-note { unicode-bidi: plaintext; }
 [dir="rtl"], .arabic { font-family: "Noto Naskh Arabic", "Arabic Typesetting", "Traditional Arabic", Tahoma, Arial, sans-serif; }
-.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", "Noto Naskh Arabic", serif; font-weight: 700; line-height: 1.05; }
+.arabic-title { font-family: "Amiri", "Arabic Typesetting", "Traditional Arabic", "Noto Naskh Arabic", serif; font-weight: 700; line-height: 1.05; }
 .page {
   width: 210mm; min-height: 297mm; margin: 0 auto;
   background: #ffffff; position: relative; overflow: hidden;
@@ -917,6 +925,7 @@ async function buildPDFBuffer(data) {
         await withTimeout(Promise.all([
           document.fonts.load('400 12pt "Noto Naskh Arabic"'),
           document.fonts.load('700 12pt "Noto Naskh Arabic"'),
+          document.fonts.load('700 12pt "Amiri"'),
           document.fonts.load('400 12pt "Inter"'),
         ]), 6000);
       } catch (e) { /* ignore */ }
