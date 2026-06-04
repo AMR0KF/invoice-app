@@ -3028,6 +3028,18 @@ body.light-theme .draft-num-readonly { background: #f1f5f9 !important; }
   letter-spacing: .01em;
 }
 .issue-card-label { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+.issue-company-field { display: flex; flex-direction: column; gap: 4px; }
+.issue-company-field select {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+body.light-theme .issue-company-field select { background: #ffffff; }
 .issue-btn {
   width: 100%;
   background: var(--accent);

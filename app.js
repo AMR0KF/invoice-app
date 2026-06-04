@@ -1336,26 +1336,33 @@ async function loadCompanies() {
       companies = [];
     } else {
       companies = (data || []).map(normalizeCompany);
-      if (!selCompId && companies.length) applyCompanyToInvoice(companies[0]);
     }
     renderDropdown('company');
     renderSettingsCompanyList();
+    renderIssueCompanyOptions();
     return;
   }
 
   try {
     companies = (await API('GET', '/api/companies')).map(normalizeCompany);
-    if (!selCompId && companies.length) applyCompanyToInvoice(companies[0]);
     renderDropdown('company');
     renderSettingsCompanyList();
-  } catch { /* server may not be running, use localStorage fallback */ 
+    renderIssueCompanyOptions();
+  } catch { /* server may not be running, use localStorage fallback */
     const stored = localStorage.getItem('inv_companies');
     companies = stored ? JSON.parse(stored).map(normalizeCompany) : [];
-    if (!selCompId && companies.length) applyCompanyToInvoice(companies[0]);
     renderDropdown('company');
     renderSettingsCompanyList();
+    renderIssueCompanyOptions();
   }
 }
+// NOTE: loadCompanies intentionally does NOT auto-apply companies[0] to the
+// editor anymore. In the draft model the seller/company comes from the draft
+// record (restored by applyPayloadToForm + bindEditorToDraft) or the
+// #issue-company selector, and the default for brand-new drafts is the
+// remembered last company (lastCompanySeed). Auto-applying companies[0] on
+// every boot/sign-in clobbered "Individual" drafts and overwrote the
+// remembered choice via rememberLastCompany — the company-selection bug.
 
 function applyCompanyToInvoice(company) {
   if (!company) return;
@@ -1365,6 +1372,42 @@ function applyCompanyToInvoice(company) {
   document.getElementById('s-phone').value = company.phone || '';
   document.getElementById('s-email').value = company.email || '';
   document.getElementById('chk-individual-disclaimer').checked = !!company.individual_disclaimer;
+  rememberLastCompany(company.id);
+}
+
+// ── Company selection persistence ───────────────────────────────────────────
+// Remember the last company the user invoiced under, so new blank invoices
+// default to it instead of forcing a re-pick every time. The "Individual /
+// no company" flow explicitly clears this (passes no company), so it is
+// never auto-reapplied there.
+const LAST_COMPANY_KEY = 'inv_last_company';
+function rememberLastCompany(id) {
+  try {
+    if (id) localStorage.setItem(LAST_COMPANY_KEY, id);
+    else localStorage.removeItem(LAST_COMPANY_KEY);
+  } catch {}
+}
+function getLastCompany() {
+  let id; try { id = localStorage.getItem(LAST_COMPANY_KEY); } catch { id = null; }
+  if (!id) return null;
+  return (companies || []).find(c => c.id === id) || null;
+}
+// Returns a draft seed ({seller, company_id}) for the remembered company,
+// or {} when none is remembered / it no longer exists.
+function lastCompanySeed() {
+  const c = getLastCompany();
+  if (!c) return {};
+  return {
+    company_id: c.id,
+    seller: { name: c.name || '', address: c.address || '', phone: c.phone || '', email: c.email || '' },
+    individual_disclaimer: !!c.individual_disclaimer,
+  };
+}
+// Create a fresh draft pre-seeded with the last-used company, and open it.
+// Used by the generic "+ New invoice / + New draft" entry points.
+function newDraftWithLastCompany() {
+  const d = newDraft(lastCompanySeed());
+  openDraft(d.local_id);
 }
 
 async function saveCompany() {
@@ -2394,6 +2437,55 @@ function refreshDraftEditorChrome() {
   if (issueNum) issueNum.textContent = next;
   const genBtn = document.getElementById('gen-btn');
   if (genBtn) genBtn.hidden = true;
+  renderIssueCompanyOptions();
+}
+
+// Populate the "Issuing from" company <select> with the saved companies
+// and reflect the current draft's company_id. The empty option is
+// "Individual / no company".
+function renderIssueCompanyOptions() {
+  const sel = document.getElementById('issue-company');
+  if (!sel) return;
+  const current = selCompId || '';
+  const opts = ['<option value="">Individual / no company</option>'];
+  (companies || []).forEach(c => {
+    opts.push(`<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || '(unnamed company)')}</option>`);
+  });
+  sel.innerHTML = opts.join('');
+  // If the draft's company no longer exists, fall back to Individual.
+  sel.value = (companies || []).some(c => c.id === current) ? current : '';
+}
+
+// User picked a company (or Individual) from the issue-card selector.
+// Applies it to the current draft's seller + company_id, remembers it
+// as the default for future new invoices, and re-renders.
+function onIssueCompanyChange() {
+  const sel = document.getElementById('issue-company');
+  if (!sel || !editingDraftId) return;
+  const id = sel.value || '';
+  const company = id ? (companies || []).find(c => c.id === id) : null;
+  const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v ?? ''; };
+  if (company) {
+    set('s-name', company.name); set('s-addr', company.address);
+    set('s-phone', company.phone); set('s-email', company.email);
+    const chkInd = document.getElementById('chk-individual-disclaimer');
+    if (chkInd) chkInd.checked = !!company.individual_disclaimer;
+    selCompId = company.id;
+  } else {
+    // Individual: clear the seller block entirely.
+    set('s-name', ''); set('s-addr', ''); set('s-phone', ''); set('s-email', '');
+    const chkInd = document.getElementById('chk-individual-disclaimer');
+    if (chkInd) chkInd.checked = false;
+    selCompId = null;
+  }
+  rememberLastCompany(selCompId);
+  // Persist company_id on the draft record (collectData omits it, so set
+  // it directly), then write the updated seller fields via autosave.
+  if (drafts[editingDraftId]) {
+    drafts[editingDraftId].company_id = selCompId;
+  }
+  writeEditingDraft();
+  recalc();
 }
 
 // Step 10 will remove the legacy chrome entirely. For now, when the
@@ -2469,13 +2561,18 @@ async function issueDraft() {
 
   setIssueBusy(true);
 
+  const _diagT0 = performance.now();
+  const _diag = (m) => console.log(`[SAVE-DIAG +${Math.round(performance.now() - _diagT0)}ms] ${m}`);
   try {
     // Build the payload the renderer expects. The draft is numberless;
     // we inject the just-computed number into the snapshot so the PDF
     // header is correct.
     const data = { ...draft, invoice_number: previewNumber };
+    _diag(`start. supabaseActive=${supabaseActive()} company_id=${draft.company_id || selCompId || null} seller=${JSON.stringify(draft.seller || {})}`);
     // Render the PDF first. If this fails, the draft is untouched.
+    _diag('calling renderPdfForData…');
     const pdfInfo = await renderPdfForData(data);
+    _diag(`renderPdfForData returned: ${pdfInfo ? 'ok (' + pdfInfo.filename + ')' : 'null'}`);
     if (!pdfInfo) {
       throw new Error('PDF generation failed');
     }
@@ -2489,10 +2586,13 @@ async function issueDraft() {
     for (let i = 0; i < ISSUE_MAX_RETRIES; i++) {
       const record = buildIssueRecord(draft, attemptNumber, pdfInfo);
       try {
+        _diag(`insertInvoiceRow attempt ${i + 1} (number=${attemptNumber})…`);
         saved = await insertInvoiceRow(record);
+        _diag(`insertInvoiceRow OK id=${saved && saved.id}`);
         break;
       } catch (err) {
         lastErr = err;
+        _diag(`insertInvoiceRow threw: code=${err && err.code} msg=${err && err.message}`);
         if (!isUniqueViolation(err)) throw err;
         // Re-read latest invoices and pick a new candidate number.
         await loadInvoices().catch(() => {});
@@ -2593,6 +2693,14 @@ function buildIssueRecord(draft, number, pdfInfo) {
 // Insert one invoice row. Wraps the existing saveInvoice() helper so
 // the issuance path stays decoupled from any legacy persistence quirks
 // — and also rethrows on a unique violation so issueDraft() can retry.
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error(`${label || 'Operation'} timed out after ${ms / 1000}s`)), ms)),
+  ]);
+}
+
 async function insertInvoiceRow(record) {
   if (!supabaseActive()) {
     // Local / offline mode: saveInvoice succeeds with a fallback id.
@@ -2626,16 +2734,30 @@ async function insertInvoiceRow(record) {
   const dropped = [];
   // Retry up to OPTIONAL_COLUMNS.length+1 times, each iteration drops
   // one column the schema cache complained about and tries again.
-  for (let attempt = 0; attempt < OPTIONAL_COLUMNS.length + 1; attempt++) {
-    const { data, error } = await supabaseClient
-      .from('invoices')
-      .insert({ ...base, user_id: supabaseUser.id })
-      .select('*')
-      .single();
+  // Columns that may carry a stale/invalid reference. If the DB rejects
+  // the link (FK violation 23503, invalid uuid 22P02) we drop it and
+  // still save the invoice — the link is a nicety, not a blocker.
+  const DROPPABLE_LINKS = ['company_id', 'customer_id'];
+  for (let attempt = 0; attempt < OPTIONAL_COLUMNS.length + DROPPABLE_LINKS.length + 1; attempt++) {
+    // Bound each attempt so a stalled Supabase call (VPN/network) can't
+    // hang the Save button forever — the true cause of the "freeze on
+    // saving" when a company is selected.
+    let data, error;
+    const _it0 = performance.now();
+    console.log(`[SAVE-DIAG] insert attempt ${attempt + 1}, columns: ${Object.keys(base).join(',')}`);
+    try {
+      ({ data, error } = await withTimeout(
+        supabaseClient.from('invoices').insert({ ...base, user_id: supabaseUser.id }).select('*').single(),
+        15000, 'Saving the invoice'));
+    } catch (timeoutErr) {
+      console.log(`[SAVE-DIAG] insert attempt ${attempt + 1} TIMED OUT/THREW after ${Math.round(performance.now() - _it0)}ms:`, timeoutErr && timeoutErr.message);
+      throw timeoutErr;   // surfaces to issueDraft → toast + button reset
+    }
+    console.log(`[SAVE-DIAG] insert attempt ${attempt + 1} responded in ${Math.round(performance.now() - _it0)}ms. error=`, error ? `${error.code}: ${error.message}` : 'none');
     if (!error) {
       if (dropped.length) {
         console.warn('Invoice insert succeeded after dropping columns:', dropped.join(', '),
-          '— apply the missing migrations in supabase/migrations/ to enable them.');
+          '- apply the missing migrations in supabase/migrations/ or fix the link.');
       }
       invoices.unshift(data);
       return data;
@@ -2644,14 +2766,41 @@ async function insertInvoiceRow(record) {
     if (error.code === '23505') {
       const e = new Error(error.message); e.code = error.code; throw e;
     }
-    // PGRST204: PostgREST schema cache miss for an unknown column.
-    // The error message is "Could not find the 'X' column ...".
-    const m = String(error.message || '').match(/'([a-z_]+)' column/i);
-    const offending = m ? m[1] : null;
-    if (offending && OPTIONAL_COLUMNS.includes(offending) && offending in base) {
-      delete base[offending];
-      dropped.push(offending);
-      continue;
+    // Unknown/missing column. Two shapes depending on whether the answer
+    // comes from PostgREST's schema cache or straight from Postgres:
+    //   • PGRST204 — "Could not find the 'company_id' column of 'invoices'
+    //     in the schema cache"
+    //   • 42703 (undefined_column) — "column invoices.company_id does not
+    //     exist"  ← what this project's Supabase returns when a migration
+    //     (e.g. 2026-05-29-invoice-company-link.sql) hasn't been applied.
+    // The old regex only matched the PGRST204 phrasing, so a 42703 fell
+    // through to the throw below and broke issuance whenever company_id was
+    // sent (i.e. a company was selected) — the "freeze/Save failed on
+    // selecting my company" report. Detect both, then drop whichever
+    // optional column the message names and retry.
+    const msg = String(error.message || '');
+    const missingColumn =
+      error.code === 'PGRST204' ||
+      error.code === '42703' ||
+      /could not find the .*? column|column .*? does not exist|schema cache/i.test(msg);
+    if (missingColumn) {
+      const offending = OPTIONAL_COLUMNS.find(c => c in base && msg.includes(c));
+      if (offending) {
+        delete base[offending];
+        dropped.push(offending);
+        continue;
+      }
+    }
+    // Bad reference (FK violation / invalid uuid) on a link column: drop
+    // the link and retry so the invoice still saves.
+    if ((error.code === '23503' || error.code === '22P02')) {
+      const linkMsg = String(error.message || '');
+      const link = DROPPABLE_LINKS.find(c => c in base && (linkMsg.includes(c) || true));
+      if (link) {
+        delete base[link];
+        dropped.push(link + ' (bad reference)');
+        continue;
+      }
     }
     // Different error or non-optional column — surface to caller.
     const e = new Error(error.message || 'Insert failed');
@@ -3671,8 +3820,7 @@ function duplicateCurrentInvoice() {
 // draft and route to it. The old startNewInvoice() / goToInvoice() pair
 // is dead code now and will be removed in step 10's cleanup.
 function newInvoiceFromList() {
-  const d = newDraft({});
-  openDraft(d.local_id);
+  newDraftWithLastCompany();
 }
 
 // Light in-place reset: clear bindings + draft, blank the form fields, pull
@@ -4140,8 +4288,11 @@ function rollupForInvoices(invs) {
 }
 
 // Start a fresh draft with NO seller/company — an individual invoice.
-// Clears any seller fields so the PDF prints without a company header.
+// Clears any seller fields so the PDF prints without a company header,
+// and clears the remembered company so subsequent new invoices stay
+// individual until the user picks a company again.
 function startIndividualInvoice() {
+  rememberLastCompany(null);
   const d = newDraft({ seller: { name: '', address: '', phone: '', email: '' } });
   openDraft(d.local_id);
 }
@@ -4283,6 +4434,7 @@ function startNewInvoiceForCompany(companyId) {
   if (companyId) {
     drafts[d.local_id].company_id = companyId;
     persistDraftsNow();
+    rememberLastCompany(companyId);   // default future new invoices to this company
   }
   openDraft(d.local_id);
 }
@@ -4694,10 +4846,10 @@ function renderHomePage() {
     </section>`;
 }
 
-// "+ New invoice" tile on home — create a fresh v2 draft, route to it.
+// "+ New invoice" tile on home — fresh draft, pre-seeded with the
+// last company the user invoiced under (if any).
 function newInvoiceFromHome() {
-  const d = newDraft({});
-  openDraft(d.local_id);
+  newDraftWithLastCompany();
 }
 
 // bootInvoicePreload: removed in the redraft. Invoices are now loaded

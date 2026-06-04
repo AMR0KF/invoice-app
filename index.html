@@ -346,6 +346,12 @@
       <span class="issue-card-label">Will be saved as</span>
       <strong id="issue-card-number">INV-001</strong>
     </div>
+    <div class="issue-company-field">
+      <label class="issue-card-label" for="issue-company">Issuing from</label>
+      <select id="issue-company" onchange="onIssueCompanyChange()">
+        <option value="">Individual / no company</option>
+      </select>
+    </div>
     <button class="gen-btn issue-btn" id="issue-btn" onclick="issueDraft()">
       Save &amp; Print / حفظ وطباعة
     </button>

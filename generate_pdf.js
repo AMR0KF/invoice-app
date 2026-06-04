@@ -103,6 +103,17 @@ function hasArabic(value) {
   return /[\u0600-\u06ff]/.test(String(value || ""));
 }
 
+// Display dates as D/M/YYYY (e.g. 14/3/2026). Input is the ISO
+// YYYY-MM-DD stored by the date picker. Non-ISO values pass through
+// unchanged so nothing breaks on unexpected input.
+function fmtDate(value) {
+  const s = String(value || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return s;
+  const [, y, mo, d] = m;
+  return `${parseInt(d, 10)}/${parseInt(mo, 10)}/${y}`;
+}
+
 function biLabel(lang, en, ar) {
   if (lang === "ar") return ar;
   if (lang === "bi") return `${en} / ${ar}`;
@@ -137,25 +148,40 @@ function normalizeTemplate(value) {
   return allowed.includes(value) ? value : "aurora";
 }
 
+// Arabic font embedded as base64 @font-face. This is the ONE reliable way to
+// get Arabic glyphs into the PDF on the deployed (serverless) renderer:
+//   - The serverless Chromium ships NO Arabic system font.
+//   - @sparticuz/chromium v148 REMOVED chromium.font(), so the old runtime
+//     font-download path silently threw and registered nothing (the
+//     "Arabic doesn't print on deployment" bug).
+//   - Google Fonts over the network is unreliable inside the function.
+// Embedding the bytes in the document makes the PDF self-contained — it
+// renders identically locally and on Vercel, with no network dependency.
+function fontDataUri(file) {
+  try {
+    const buf = fs.readFileSync(path.join(BASE, "fonts", file));
+    return `data:font/ttf;base64,${buf.toString("base64")}`;
+  } catch (err) {
+    return "";
+  }
+}
+
+const EMBEDDED_FONT_CSS = (() => {
+  const faces = [
+    { weight: 400, uri: fontDataUri("NotoNaskhArabic-Regular.ttf") },
+    { weight: 700, uri: fontDataUri("NotoNaskhArabic-Bold.ttf") },
+  ].filter((f) => f.uri);
+  if (!faces.length) return "";
+  const rules = faces
+    .map((f) => `@font-face{font-family:"Noto Naskh Arabic";font-style:normal;font-weight:${f.weight};font-display:block;src:url(${f.uri}) format("truetype");}`)
+    .join("");
+  return `<style>${rules}</style>`;
+})();
+
 const FONT_LINKS = `
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&family=Amiri:ital,wght@0,400;0,700;1,400&family=Noto+Naskh+Arabic:wght@400;500;700&display=block" rel="stylesheet">`;
-
-const VERCEL_FONT_URLS = [
-  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoNaskhArabic/NotoNaskhArabic-Regular.ttf",
-  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoNaskhArabic/NotoNaskhArabic-Bold.ttf",
-  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf",
-  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf",
-];
-let vercelFontsLoaded = false;
-async function ensureVercelFonts() {
-  if (!isVercel || vercelFontsLoaded) return;
-  for (const url of VERCEL_FONT_URLS) {
-    try { await chromium.font(url); } catch (err) { /* tolerate single-font failures */ }
-  }
-  vercelFontsLoaded = true;
-}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&family=Amiri:ital,wght@0,400;0,700;1,400&family=Noto+Naskh+Arabic:wght@400;500;700&display=block" rel="stylesheet">${EMBEDDED_FONT_CSS}`;
 
 function moneyCompact(n) {
   return fmt(n).replace(/\.00$/, "");
@@ -190,8 +216,8 @@ function renderLegacyTemplate(data, template) {
   const buyer = data.buyer || {};
   const totals = calcTotals(data.items || [], data.vat_pct || 0, data.include_discount !== false, data.invoice_discount);
   const invoiceNo = esc(data.invoice_number || "INV-001");
-  const date = esc(data.date || "");
-  const due = data.due_date || "";
+  const date = esc(fmtDate(data.date));
+  const due = fmtDate(data.due_date || "");
   const invoiceTitle = biLabel(lang, "Invoice", "\u0641\u0627\u062a\u0648\u0631\u0629");
   const fromLabel = biLabel(lang, "FROM", "\u0645\u0646");
   const billToLabel = biLabel(lang, "BILL TO", "\u0625\u0644\u0649");
@@ -338,7 +364,7 @@ body.meridian .page { border-left: 2mm solid var(--brand); padding: 18mm 18mm 16
 body.obsidian .page { border-left: 18mm solid #111827; }
 .brand { display: flex; gap: 4mm; align-items: center; min-height: 12mm; }
 .company-title { margin: 0; font-size: 14pt; }
-.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", serif; font-size: 28pt; line-height: 1; font-weight: 700; }
+.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", "Noto Naskh Arabic", serif; font-size: 28pt; line-height: 1; font-weight: 700; }
 .brand p, .invoice-id p { margin: 1mm 0 0; color: var(--muted); font-size: 8pt; }
 .invoice-id { text-align: right; }
 .invoice-id h2 { margin: 0; color: var(--brand-strong); font-size: 22pt; }
@@ -438,8 +464,8 @@ function renderAuroraV2(data) {
   const buyer = data.buyer || {};
   const totals = calcTotals(data.items || [], data.vat_pct || 0, data.include_discount !== false, data.invoice_discount);
   const invoiceNo = esc(data.invoice_number || "INV-001");
-  const date = esc(data.date || "");
-  const due = data.due_date || "";
+  const date = esc(fmtDate(data.date));
+  const due = fmtDate(data.due_date || "");
   const showDiscount = totals.totalDisc > 0;
   const showInvoiceDiscount = totals.invoiceDiscount.enabled && totals.invoiceDiscount.amount > 0;
   const vatPct = Number(data.vat_pct) || 0;
@@ -537,7 +563,7 @@ body {
 }
 [dir="auto"], [dir="rtl"], .ar-note { unicode-bidi: plaintext; }
 [dir="rtl"], .arabic { font-family: "Noto Naskh Arabic", "Arabic Typesetting", "Traditional Arabic", Tahoma, Arial, sans-serif; }
-.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", serif; font-weight: 700; line-height: 1.05; }
+.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", "Noto Naskh Arabic", serif; font-weight: 700; line-height: 1.05; }
 .page {
   width: 210mm; min-height: 297mm; margin: 0 auto;
   background: #ffffff; position: relative; overflow: hidden;
@@ -751,7 +777,10 @@ async function browserLaunchOptions() {
     return {
       args: chromium.args,
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      // v148 removed chromium.headless (it returned `undefined`, which
+      // happened to fall through to puppeteer's default). Pass true
+      // explicitly so the launch never depends on a dropped property.
+      headless: true,
     };
   }
 
@@ -791,7 +820,7 @@ function renderTemplate(data) {
     </tr>`).join("");
 
   const dueHtml = data.due_date
-    ? `<div class="meta-item"><label>${esc(biLabel(lang, "Due Date", "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0627\u0633\u062a\u062d\u0642\u0627\u0642"))}</label><strong>${esc(data.due_date)}</strong></div>`
+    ? `<div class="meta-item"><label>${esc(biLabel(lang, "Due Date", "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0627\u0633\u062a\u062d\u0642\u0627\u0642"))}</label><strong>${esc(fmtDate(data.due_date))}</strong></div>`
     : "";
   const sellerParty = seller.name
     ? `<div class="party party-from">${partyBlock(biLabel(lang, "FROM", "\u0645\u0646"), seller)}</div>`
@@ -822,7 +851,7 @@ function renderTemplate(data) {
     INVOICE_WORD: invoiceWord,
     INVOICE_NUMBER: esc(data.invoice_number || "INV-001"),
     ISSUED_LABEL: esc(biLabel(lang, "Issued", "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0625\u0635\u062f\u0627\u0631")),
-    DATE: esc(data.date || ""),
+    DATE: esc(fmtDate(data.date)),
     INVOICE_DATE_LABEL: esc(biLabel(lang, "Invoice Date", "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0641\u0627\u062a\u0648\u0631\u0629")),
     DUE_DATE_HTML: dueHtml,
     CURRENCY_LABEL: esc(biLabel(lang, "Currency", "\u0627\u0644\u0639\u0645\u0644\u0629")),
@@ -850,6 +879,9 @@ function renderTemplate(data) {
   };
 
   let html = fs.readFileSync(TEMPLATE, "utf8");
+  // Inject the embedded Arabic @font-face so meridian_v2 renders Arabic on
+  // the serverless deploy too (same fix as the inline templates).
+  if (EMBEDDED_FONT_CSS) html = html.replace("</head>", `${EMBEDDED_FONT_CSS}</head>`);
   for (const [key, value] of Object.entries(replacements)) {
     html = html.replaceAll(`{{${key}}}`, value);
   }
@@ -866,7 +898,6 @@ async function buildAndSavePDF(data) {
 }
 
 async function buildPDFBuffer(data) {
-  await ensureVercelFonts();
   const html = renderTemplate(data);
   let browser;
   try {
