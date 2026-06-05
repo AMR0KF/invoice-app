@@ -372,7 +372,7 @@ body.meridian .page { border-left: 2mm solid var(--brand); padding: 18mm 18mm 16
 body.obsidian .page { border-left: 18mm solid #111827; }
 .brand { display: flex; gap: 4mm; align-items: center; min-height: 12mm; }
 .company-title { margin: 0; font-size: 14pt; }
-.arabic-title { font-family: "Amiri", "Arabic Typesetting", "Traditional Arabic", "Noto Naskh Arabic", serif; font-size: 28pt; line-height: 1; font-weight: 700; }
+.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", "Noto Naskh Arabic", serif; font-size: 28pt; line-height: 1; font-weight: 700; }
 .brand p, .invoice-id p { margin: 1mm 0 0; color: var(--muted); font-size: 8pt; }
 .invoice-id { text-align: right; }
 .invoice-id h2 { margin: 0; color: var(--brand-strong); font-size: 22pt; }
@@ -571,7 +571,7 @@ body {
 }
 [dir="auto"], [dir="rtl"], .ar-note { unicode-bidi: plaintext; }
 [dir="rtl"], .arabic { font-family: "Noto Naskh Arabic", "Arabic Typesetting", "Traditional Arabic", Tahoma, Arial, sans-serif; }
-.arabic-title { font-family: "Amiri", "Arabic Typesetting", "Traditional Arabic", "Noto Naskh Arabic", serif; font-weight: 700; line-height: 1.05; }
+.arabic-title { font-family: "Arabic Typesetting", "Amiri", "Traditional Arabic", "Noto Naskh Arabic", serif; font-weight: 700; line-height: 1.05; }
 .page {
   width: 210mm; min-height: 297mm; margin: 0 auto;
   background: #ffffff; position: relative; overflow: hidden;
