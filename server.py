@@ -44,8 +44,19 @@ PRINTS.mkdir(exist_ok=True)
 COMPANIES_FILE = DATA / "companies.json"
 CUSTOMERS_FILE = DATA / "customers.json"
 INVOICES_FILE  = DATA / "invoices.json"
+TRUCKS_FILE    = DATA / "trucks.json"
+JOBS_FILE      = DATA / "jobs.json"
+EXPENSES_FILE  = DATA / "expenses.json"
 SETTINGS_FILE = DATA / "settings.json"
 SUPABASE_CONFIG_FILE = STATIC_DATA / "supabase_config.json"
+
+# Trucks seeded on first run when no file exists yet. Mirrors the Supabase
+# seed (two workspace trucks). There is no truck-management UI; trucks only
+# appear as a select in the job form.
+DEFAULT_TRUCKS = [
+    {"id": "tr1", "label": "Truck 1", "plate": "", "notes": ""},
+    {"id": "tr2", "label": "Truck 2", "plate": "", "notes": ""},
+]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def load_json(path):
@@ -493,6 +504,49 @@ def delete_customer(cid):
     save_json(CUSTOMERS_FILE, customers)
     return jsonify({"ok": True})
 
+def _iso_now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+def ensure_customer(customer_id, customer_name, customer_email="", customer_phone="", customer_address=""):
+    if not customer_name:
+        return customer_id
+    customers = load_json(CUSTOMERS_FILE)
+    if customer_id:
+        existing = next((c for c in customers if c.get("id") == customer_id), None)
+        if existing:
+            return customer_id
+    # Look up by case-insensitive name
+    name_clean = str(customer_name).strip().lower()
+    existing = next((c for c in customers if str(c.get("name", "")).strip().lower() == name_clean), None)
+    if existing:
+        return existing.get("id")
+    # Auto-create customer
+    new_id = "c" + uuid.uuid4().hex[:8]
+    new_cust = {
+        "id": new_id,
+        "name": str(customer_name).strip(),
+        "email": str(customer_email or "").strip(),
+        "phone": str(customer_phone or "").strip(),
+        "address": str(customer_address or "").strip(),
+        "net_terms_days": 30,
+        "created_at": _iso_now()
+    }
+    customers.append(new_cust)
+    save_json(CUSTOMERS_FILE, customers)
+    return new_id
+
+# ── Trucks (local-mode, read-only) ────────────────────────────────────────────
+# No truck-management UI; trucks only feed the job-form select. Seed defaults
+# on first run so the select is never empty in local mode.
+@app.route("/api/trucks", methods=["GET"])
+def list_trucks():
+    trucks = load_json(TRUCKS_FILE)
+    if not trucks:
+        save_json(TRUCKS_FILE, DEFAULT_TRUCKS)
+        trucks = DEFAULT_TRUCKS
+    return jsonify(trucks)
+
 # ── Invoices (local-mode persistence) ─────────────────────────────────────────
 # Local fallback for the invoice list. Supabase users go through the JS
 # client directly; this endpoint covers `!supabaseActive()` mode (and dev).
@@ -508,6 +562,28 @@ def create_invoice():
         record["id"] = "iv" + uuid.uuid4().hex[:10]
     record.setdefault("created_at", _iso_now())
     record.setdefault("history", [])
+    record.setdefault("payments", [])
+    record.setdefault("amount_paid", 0.0)
+
+    # Auto-upsert customer into CRM
+    buyer = record.get("buyer") or {}
+    if buyer.get("name"):
+        record["customer_id"] = ensure_customer(
+            record.get("customer_id"),
+            buyer.get("name"),
+            buyer.get("email"),
+            buyer.get("phone"),
+            buyer.get("address")
+        )
+
+    total = float(record.get("total") or 0)
+    amount_paid = float(record.get("amount_paid") or 0)
+    record["balance_due"] = max(0.0, total - amount_paid)
+    if amount_paid >= total and total > 0:
+        record["status"] = "paid"
+    elif amount_paid > 0:
+        record["status"] = "partially_paid"
+
     invoices.append(record)
     save_json(INVOICES_FILE, invoices)
     return jsonify({"ok": True, "id": record["id"], "invoice": record})
@@ -519,6 +595,7 @@ def patch_invoice(iid):
     if not record:
         return jsonify({"ok": False, "error": "not found"}), 404
     fields = request.json or {}
+
     # Track status transitions in history.
     if "status" in fields and fields["status"] != record.get("status"):
         record.setdefault("history", []).append({
@@ -530,9 +607,64 @@ def patch_invoice(iid):
             fields.setdefault("paid_at", _iso_now())
         if fields["status"] == "issued":
             fields.setdefault("sent_at", _iso_now())
+
     record.update(fields)
+
+    total = float(record.get("total") or 0)
+    amount_paid = float(record.get("amount_paid") or 0)
+    record["balance_due"] = max(0.0, total - amount_paid)
+
     save_json(INVOICES_FILE, invoices)
     return jsonify({"ok": True, "invoice": record})
+
+@app.route("/api/invoices/<iid>/payments", methods=["POST"])
+def record_invoice_payment(iid):
+    invoices = load_json(INVOICES_FILE)
+    record = next((r for r in invoices if r.get("id") == iid), None)
+    if not record:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    payment = request.json or {}
+    amt = float(payment.get("amount") or 0)
+    if amt <= 0:
+        return jsonify({"ok": False, "error": "Payment amount must be greater than 0"}), 400
+
+    payment_record = {
+        "id": "pm" + uuid.uuid4().hex[:10],
+        "at": payment.get("at") or _iso_now(),
+        "amount": amt,
+        "method": payment.get("method") or "cash",
+        "note": payment.get("note") or "",
+    }
+    record.setdefault("payments", []).append(payment_record)
+
+    # Recalculate total paid
+    total_paid = sum(float(p.get("amount") or 0) for p in record["payments"])
+    record["amount_paid"] = total_paid
+    total = float(record.get("total") or 0)
+    balance = max(0.0, total - total_paid)
+    record["balance_due"] = balance
+
+    old_status = record.get("status")
+    new_status = old_status
+    if total_paid >= total and total > 0:
+        new_status = "paid"
+        record["paid_at"] = payment_record["at"]
+    elif total_paid > 0:
+        new_status = "partially_paid"
+    else:
+        new_status = "issued"
+
+    if new_status != old_status:
+        record["status"] = new_status
+        record.setdefault("history", []).append({
+            "at": _iso_now(),
+            "from": old_status,
+            "to": new_status,
+            "note": f"Payment of {amt} ({payment_record['method']})"
+        })
+
+    save_json(INVOICES_FILE, invoices)
+    return jsonify({"ok": True, "invoice": record, "payment": payment_record})
 
 @app.route("/api/invoices/<iid>", methods=["DELETE"])
 def delete_invoice(iid):
@@ -540,9 +672,109 @@ def delete_invoice(iid):
     save_json(INVOICES_FILE, invoices)
     return jsonify({"ok": True})
 
-def _iso_now():
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
+# ── Service Reports / Jobs (local-mode persistence) ───────────────────────────
+SERVICE_REPORTS_FILE = JOBS_FILE
+
+@app.route("/api/service-reports", methods=["GET"])
+@app.route("/api/jobs", methods=["GET"])
+def list_service_reports():
+    return jsonify(load_json(SERVICE_REPORTS_FILE))
+
+@app.route("/api/service-reports", methods=["POST"])
+@app.route("/api/jobs", methods=["POST"])
+def create_service_report():
+    reports = load_json(SERVICE_REPORTS_FILE)
+    record = request.json or {}
+    if not record.get("id"):
+        record["id"] = "sr" + uuid.uuid4().hex[:10]
+    record.setdefault("created_at", _iso_now())
+    record.setdefault("updated_at", _iso_now())
+    record.setdefault("job_types", [])
+    record.setdefault("items", [])
+    record.setdefault("status", "pending")
+
+    # Auto-upsert customer into CRM
+    cust_name = record.get("customer_name")
+    if cust_name:
+        record["customer_id"] = ensure_customer(
+            record.get("customer_id"),
+            cust_name,
+            record.get("customer_email"),
+            record.get("customer_phone"),
+            record.get("customer_address")
+        )
+
+    reports.append(record)
+    save_json(SERVICE_REPORTS_FILE, reports)
+    return jsonify({"ok": True, "id": record["id"], "job": record, "service_report": record})
+
+@app.route("/api/service-reports/<jid>", methods=["PATCH"])
+@app.route("/api/jobs/<jid>", methods=["PATCH"])
+def patch_service_report(jid):
+    reports = load_json(SERVICE_REPORTS_FILE)
+    record = next((r for r in reports if r.get("id") == jid), None)
+    if not record:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    fields = request.json or {}
+
+    cust_name = fields.get("customer_name")
+    if cust_name:
+        fields["customer_id"] = ensure_customer(
+            fields.get("customer_id") or record.get("customer_id"),
+            cust_name,
+            fields.get("customer_email") or record.get("customer_email"),
+            fields.get("customer_phone") or record.get("customer_phone"),
+            fields.get("customer_address") or record.get("customer_address")
+        )
+
+    record.update(fields)
+    record["updated_at"] = _iso_now()
+    save_json(SERVICE_REPORTS_FILE, reports)
+    return jsonify({"ok": True, "job": record, "service_report": record})
+
+@app.route("/api/service-reports/<jid>", methods=["DELETE"])
+@app.route("/api/jobs/<jid>", methods=["DELETE"])
+def delete_service_report(jid):
+    reports = [r for r in load_json(SERVICE_REPORTS_FILE) if r.get("id") != jid]
+    save_json(SERVICE_REPORTS_FILE, reports)
+    return jsonify({"ok": True})
+
+# ── Expenses (local-mode persistence) ─────────────────────────────────────────
+@app.route("/api/expenses", methods=["GET"])
+def list_expenses():
+    return jsonify(load_json(EXPENSES_FILE))
+
+@app.route("/api/expenses", methods=["POST"])
+def create_expense():
+    expenses = load_json(EXPENSES_FILE)
+    record = request.json or {}
+    if not record.get("id"):
+        record["id"] = "ex" + uuid.uuid4().hex[:10]
+    record.setdefault("created_at", _iso_now())
+    record.setdefault("updated_at", _iso_now())
+    record.setdefault("category", "other")
+    record.setdefault("currency", "USD")
+    expenses.append(record)
+    save_json(EXPENSES_FILE, expenses)
+    return jsonify({"ok": True, "id": record["id"], "expense": record})
+
+@app.route("/api/expenses/<eid>", methods=["PATCH"])
+def patch_expense(eid):
+    expenses = load_json(EXPENSES_FILE)
+    record = next((r for r in expenses if r.get("id") == eid), None)
+    if not record:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    fields = request.json or {}
+    record.update(fields)
+    record["updated_at"] = _iso_now()
+    save_json(EXPENSES_FILE, expenses)
+    return jsonify({"ok": True, "expense": record})
+
+@app.route("/api/expenses/<eid>", methods=["DELETE"])
+def delete_expense(eid):
+    expenses = [r for r in load_json(EXPENSES_FILE) if r.get("id") != eid]
+    save_json(EXPENSES_FILE, expenses)
+    return jsonify({"ok": True})
 
 # ── Generate Invoice ──────────────────────────────────────────────────────────
 @app.route("/api/generate", methods=["POST"])
@@ -610,5 +842,6 @@ if __name__ == "__main__":
     url  = f"http://localhost:{port}"
     print(f"\nInvoice Maker running at {url}")
     print("    Press Ctrl+C to stop.\n")
-    Timer(1.2, lambda: webbrowser.open(url)).start()
+    if not os.getenv("NO_BROWSER"):
+        Timer(1.2, lambda: webbrowser.open(url)).start()
     app.run(port=port, debug=False)

@@ -8,11 +8,8 @@ server-glass.*.log
 server-debug.*.log
 data/output/
 data/print_jobs/
-data/settings.json
-data/companies.json
-data/customers.json
-data/invoices.json
-data/supabase_config.json
+data/*.json
+_shot*.js
 .vercel/
 
 .vercel

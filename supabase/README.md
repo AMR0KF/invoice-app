@@ -5,8 +5,13 @@
 3. In Authentication > Users, create these confirmed users:
    - `amer@invoice.local` / `12345678`
    - `amro@invoice.local` / `12345678`
-4. Copy `data/supabase_config.example.json` to `data/supabase_config.json`.
-5. Fill in your project URL and anon or publishable key:
+4. Back in the SQL Editor, run `supabase/migrations/2026-06-17-jobs-trucks-expenses.sql`.
+   This seeds the two workspace trucks and sets the operator roles
+   (`amro` = owner, `amer` = driver assigned Truck 1). It **must run after**
+   the `amer`/`amro` users exist above, or the role/assignment seed is a no-op
+   (the trucks still seed). The block is idempotent — safe to re-run.
+5. Copy `data/supabase_config.example.json` to `data/supabase_config.json`.
+6. Fill in your project URL and anon or publishable key:
 
 ```json
 {

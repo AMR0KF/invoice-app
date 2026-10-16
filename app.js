@@ -33,6 +33,18 @@ let supabaseClient = null;
 let supabaseUser = null;
 let supabaseConfigured = false;
 let pdfJsModule = null;
+// ── Operations layer (trucks / jobs / expenses) + roles ──────────────────────
+// trucks/jobs/expenses are workspace-shared (owner + driver see the same set);
+// see supabase/migrations/2026-06-17-jobs-trucks-expenses.sql. Role is read
+// once on login into currentUserRole and gates navigation + the
+// "Create invoice from job" action. Local/offline mode defaults to owner.
+let trucks   = [];
+let jobs      = [];
+let expenses  = [];
+let currentUserRole = 'owner';         // 'owner' | 'driver'
+let currentAssignedTruckId = null;     // driver's locked truck (user_settings)
+let roleResolved = false;              // true once the real role is known (or offline-owner confirmed)
+let jobStatusFilter = 'all';           // jobs list status chip: all | pending | done
 // Per-invoice workflow state (persisted with the draft).
 let currentInvoiceStatus = 'draft';   // 'draft' | 'issued' | 'paid'
 let currentInvoicePaidDate = null;    // ISO date string when status === 'paid'
@@ -79,6 +91,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadCompanies();
     await loadCustomers();
   }
+  // Operations layer (trucks + jobs) for Home/Jobs. Local mode seeds two
+  // trucks on first GET. applyRoleNav fixes the nav for the resolved role
+  // (owner by default / driver when user_settings says so).
+  await loadOperationsData();
+  applyRoleNav();
   // Final routeView after all async work — re-renders the active view
   // with the now-loaded data (especially Home's hero stats).
   routeView();
@@ -263,11 +280,23 @@ function currentDocumentSettings() {
 
 async function loadRemoteDocumentSettings() {
   if (!supabaseActive()) return;
-  const { data, error } = await supabaseClient
+  let { data, error } = await supabaseClient
     .from('user_settings')
-    .select('currency,doc_language,template,vat_pct,theme')
+    .select('currency,doc_language,template,vat_pct,theme,default_company_id')
     .eq('user_id', supabaseUser.id)
     .maybeSingle();
+
+  if (error && error.code === '42703') {
+    // Column default_company_id doesn't exist yet in Supabase, fallback safely
+    const res = await supabaseClient
+      .from('user_settings')
+      .select('currency,doc_language,template,vat_pct,theme')
+      .eq('user_id', supabaseUser.id)
+      .maybeSingle();
+    data = res.data;
+    error = res.error;
+  }
+
   if (error) {
     console.warn('Supabase settings load skipped:', error.message || error);
     return;
@@ -282,7 +311,27 @@ async function loadRemoteDocumentSettings() {
   localStorage.setItem('inv_template', normalizeTemplate(data.template || 'aurora'));
   localStorage.setItem('inv_vat_pct', String(data.vat_pct || 0));
   localStorage.setItem('inv_theme', data.theme === 'light' ? 'light' : 'dark');
+
+  if (data.default_company_id) {
+    try {
+      const key = (typeof getUserCompanyKey === 'function') ? getUserCompanyKey() : 'inv_last_company';
+      localStorage.setItem(key, data.default_company_id);
+      localStorage.setItem('inv_last_company', data.default_company_id);
+    } catch {}
+  }
   loadDocumentSettings();
+}
+
+async function saveRemoteCompanyPreference(companyId) {
+  if (!supabaseActive() || !supabaseUser) return;
+  try {
+    const { error } = await supabaseClient
+      .from('user_settings')
+      .upsert({ user_id: supabaseUser.id, default_company_id: companyId || null }, { onConflict: 'user_id' });
+    if (error && error.code !== '42703') {
+      console.warn('Could not save default_company_id to Supabase:', error.message);
+    }
+  } catch (err) {}
 }
 
 async function saveRemoteDocumentSettings(showError = true) {
@@ -388,6 +437,12 @@ function currentRouteName() {
   if (h.startsWith('#/invoices'))     return 'invoices';
   if (h.startsWith('#/editor'))       return 'editor';   // legacy
   if (h.startsWith('#/home'))         return 'home';
+  // Jobs: check the new/edit variants before the bare /<id> detail route.
+  if (h.startsWith('#/jobs/new'))                       return 'job-edit';
+  if (h.startsWith('#/jobs/') && h.endsWith('/edit'))   return 'job-edit';
+  if (h.startsWith('#/jobs/'))                          return 'job-detail';
+  if (h.startsWith('#/jobs'))                           return 'jobs';
+  if (h.startsWith('#/profile'))      return 'profile';
   if (h.startsWith('#/customers/'))   return 'customer-detail';
   if (h.startsWith('#/customers'))    return 'customers';
   if (h.startsWith('#/companies/'))   return 'company-detail';
@@ -405,6 +460,8 @@ function navHighlightFor(route) {
   if (route === 'invoice-edit')    return 'drafts';
   if (route === 'editor')          return 'drafts';   // legacy redirect target
   if (route === 'draft-edit')      return 'drafts';
+  if (route === 'job-edit')        return 'jobs';
+  if (route === 'job-detail')      return 'jobs';
   return route;
 }
 
@@ -412,7 +469,11 @@ const ALL_VIEW_IDS = [
   'view-home', 'view-invoice', 'view-invoices', 'view-customers',
   'view-customer', 'view-companies', 'view-company', 'view-financial',
   'view-settings', 'view-drafts',
+  'view-jobs', 'view-job-edit', 'view-job-detail', 'view-profile',
 ];
+
+// Routes a driver may reach. Anything else redirects to #/jobs.
+const DRIVER_ALLOWED_ROUTES = ['home', 'jobs', 'job-edit', 'job-detail', 'profile'];
 
 function routeView() {
   let route = currentRouteName();
@@ -422,6 +483,16 @@ function routeView() {
   if (route === 'editor') {
     location.hash = '#/drafts';
     return;
+  }
+  // Role guard. A confirmed driver may only reach jobs/profile/home; any
+  // owner-only route bounces to the jobs list (redirect → hashchange →
+  // routeView, so bail). While the role is still unresolved on boot, don't
+  // render owner-only chrome to a possibly-driver session — show neutral Home
+  // for this tick; the trailing routeView() after loadUserRole renders the
+  // real target once roleResolved is true.
+  if (!DRIVER_ALLOWED_ROUTES.includes(route)) {
+    if (currentUserRole === 'driver') { location.hash = '#/jobs'; return; }
+    if (!roleResolved) route = 'home';
   }
   // Leaving a draft-edit route unbinds the editor from v2 storage so
   // later input events don't write back to the draft we just closed.
@@ -453,6 +524,10 @@ function routeView() {
     'company-detail':  'view-company',
     financial:         'view-financial',
     settings:          'view-settings',
+    jobs:              'view-jobs',
+    'job-edit':        'view-job-edit',
+    'job-detail':      'view-job-detail',
+    profile:           'view-profile',
   })[route];
 
   // Hide everything, then unhide the active view.
@@ -472,9 +547,30 @@ function routeView() {
   document.body.classList.toggle('on-drafts',       route === 'drafts');
   document.body.classList.toggle('on-draft-edit',   route === 'draft-edit');
   document.body.classList.toggle('on-invoice-view', route === 'invoice-detail' || route === 'invoice-edit');
+  document.body.classList.toggle('on-jobs',         route === 'jobs');
+  document.body.classList.toggle('on-job-edit',     route === 'job-edit');
+  document.body.classList.toggle('on-job-detail',   route === 'job-detail');
+  document.body.classList.toggle('on-profile',      route === 'profile');
 
-  document.querySelectorAll('.topbar-nav .nav-link').forEach(el => {
+  document.querySelectorAll('.topbar-nav .nav-link, .mobile-nav-drawer .mobile-nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.route === navRoute);
+  });
+  const bottomNavMap = {
+    home: 'home',
+    jobs: 'jobs',
+    'job-edit': 'jobs',
+    'job-detail': 'jobs',
+    drafts: 'invoices',
+    'draft-edit': 'invoices',
+    invoices: 'invoices',
+    'invoice-detail': 'invoices',
+    'invoice-edit': 'invoices',
+    customers: 'customers',
+    'customer-detail': 'customers',
+  };
+  const activeBottomNav = bottomNavMap[route] || '';
+  document.querySelectorAll('.mobile-bottom-nav .mobile-nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.nav === activeBottomNav);
   });
 
   // Per-route work.
@@ -519,6 +615,32 @@ function routeView() {
   if (route === 'financial') {
     if (typeof renderFinancialPage === 'function') renderFinancialPage();
     loadInvoices().then(() => { if (typeof renderFinancialPage === 'function') renderFinancialPage(); }).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (route === 'jobs') {
+    if (typeof renderJobsPage === 'function') renderJobsPage();
+    loadJobs().then(() => { if (typeof renderJobsPage === 'function') renderJobsPage(); }).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (route === 'job-edit') {
+    // #/jobs/new  or  #/jobs/<id>/edit
+    const parts = hash.split('/');   // ['', 'jobs', 'new'|id, ('edit')]
+    const jobId = (parts[2] && parts[2] !== 'new') ? parts[2] : '';
+    if (typeof renderJobEdit === 'function') renderJobEdit(jobId);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (route === 'job-detail') {
+    const jobId = hash.split('/')[2] || '';
+    if (typeof renderJobDetail === 'function') renderJobDetail(jobId);
+    loadJobs().then(() => { if (typeof renderJobDetail === 'function') renderJobDetail(jobId); }).catch(() => {});
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (route === 'profile') {
+    if (typeof renderProfilePage === 'function') renderProfilePage();
     window.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
@@ -584,6 +706,19 @@ function openCompanies() {
 }
 function openFinancial() {
   if (location.hash === '#/financial') routeView(); else location.hash = '#/financial';
+}
+function openJobs() {
+  if (location.hash === '#/jobs') routeView(); else location.hash = '#/jobs';
+}
+function openProfile() {
+  if (location.hash === '#/profile') routeView(); else location.hash = '#/profile';
+}
+function openJobDetail(jobId) {
+  if (!jobId) return;
+  location.hash = '#/jobs/' + encodeURIComponent(jobId);
+}
+function openJobEdit(jobId) {
+  location.hash = jobId ? '#/jobs/' + encodeURIComponent(jobId) + '/edit' : '#/jobs/new';
 }
 function openDrafts() {
   // If the user has no drafts yet, skip the empty-state list and drop
@@ -1099,9 +1234,34 @@ function updateAuthUi() {
 
 async function initSupabaseAuth() {
   try {
-    const config = await API('GET', '/api/supabase-config');
-    supabaseConfigured = !!config.enabled;
+    let config = null;
+    try {
+      config = await API('GET', '/api/supabase-config');
+    } catch (e) {
+      // API call failed, try direct static fetch
+      try {
+        const res = await fetch('data/supabase_config.json');
+        if (res.ok) {
+          const json = await res.json();
+          config = { enabled: Boolean(json.url && json.anon_key), ...json };
+        }
+      } catch (_) {}
+    }
+    if (!config || !config.enabled) {
+      try {
+        const res = await fetch('data/supabase_config.json');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.url && json.anon_key) {
+            config = { enabled: true, ...json };
+          }
+        }
+      } catch (_) {}
+    }
+
+    supabaseConfigured = !!(config && config.enabled);
     if (!supabaseConfigured) {
+      roleResolved = true;   // local mode → owner is authoritative
       updateAuthUi();
       return;
     }
@@ -1111,24 +1271,39 @@ async function initSupabaseAuth() {
     const { data } = await supabaseClient.auth.getSession();
     supabaseUser = data?.session?.user || null;
     updateAuthUi();
-    if (supabaseUser) await loadRemoteDocumentSettings();
+    if (supabaseUser) {
+      await loadRemoteDocumentSettings();
+      await loadUserRole();
+      applyRoleNav();
+    } else {
+      roleResolved = true;   // anonymous (auth-locked) → owner default
+    }
 
     supabaseClient.auth.onAuthStateChange(async (_event, session) => {
       supabaseUser = session?.user || null;
       updateAuthUi();
       if (supabaseUser) {
         await loadRemoteDocumentSettings();
+        await loadUserRole();
+        applyRoleNav();
         if (!rowCount) addRow();
         await loadCompanies();
         await loadCustomers();
         await loadInvoices();   // pull the signed-in user's invoices
+        await loadOperationsData();   // trucks + jobs
         routeView();            // re-render the active view with loaded data
       } else {
         companies = [];
         customers = [];
         invoices = [];
+        trucks = [];
+        jobs = [];
+        try { localStorage.removeItem(JOBS_LS); } catch {}   // don't leak jobs to the next session
         selCompId = null;
         selCustId = null;
+        currentUserRole = 'owner';
+        currentAssignedTruckId = null;
+        applyRoleNav();
         renderDropdown('company');
         renderDropdown('customer');
         routeView();
@@ -1138,6 +1313,7 @@ async function initSupabaseAuth() {
     supabaseConfigured = false;
     supabaseClient = null;
     supabaseUser = null;
+    roleResolved = true;   // fall back to local/owner behavior
     updateAuthUi();
   }
 }
@@ -1182,10 +1358,13 @@ async function signInSupabase() {
     updateAuthUi();
     closeAuthModal(true);
     await loadRemoteDocumentSettings();
+    await loadUserRole();
+    applyRoleNav();
     if (!rowCount) addRow();
     await loadCompanies();
     await loadCustomers();
     await loadInvoices();   // pull the signed-in user's invoices
+    await loadOperationsData();   // trucks + jobs
     routeView();            // re-render the active view with loaded data
     toast('Signed in', 'success');
   } catch (err) {
@@ -1201,13 +1380,26 @@ async function signOutSupabase() {
   supabaseUser = null;
   companies = [];
   customers = [];
+  trucks = [];
+  jobs = [];
+  try {
+    localStorage.removeItem(JOBS_LS);
+    localStorage.removeItem('inv_last_company');
+    if (typeof getUserCompanyKey === 'function') {
+      localStorage.removeItem(getUserCompanyKey());
+    }
+  } catch {}   // don't leak jobs or company to the next session
   selCompId = null;
   selCustId = null;
+  currentUserRole = 'owner';
+  currentAssignedTruckId = null;
   updateAuthUi();
+  applyRoleNav();
   loadDocumentSettings();
   renderDropdown('company');
   renderDropdown('customer');
   renderSettingsCompanyList();
+  renderIssueCompanyOptions();
   toast('Signed out', 'success');
 }
 
@@ -1381,14 +1573,33 @@ function applyCompanyToInvoice(company) {
 // no company" flow explicitly clears this (passes no company), so it is
 // never auto-reapplied there.
 const LAST_COMPANY_KEY = 'inv_last_company';
+
+function getUserCompanyKey() {
+  const uid = (supabaseUser && supabaseUser.id) ? supabaseUser.id : 'anon';
+  return `inv_${uid}_company_id`;
+}
+
 function rememberLastCompany(id) {
   try {
-    if (id) localStorage.setItem(LAST_COMPANY_KEY, id);
-    else localStorage.removeItem(LAST_COMPANY_KEY);
+    const scopedKey = getUserCompanyKey();
+    if (id) {
+      localStorage.setItem(scopedKey, id);
+      localStorage.setItem(LAST_COMPANY_KEY, id);
+    } else {
+      localStorage.removeItem(scopedKey);
+      localStorage.removeItem(LAST_COMPANY_KEY);
+    }
   } catch {}
+  if (supabaseActive() && supabaseUser) {
+    saveRemoteCompanyPreference(id);
+  }
 }
+
 function getLastCompany() {
-  let id; try { id = localStorage.getItem(LAST_COMPANY_KEY); } catch { id = null; }
+  let id = null;
+  try {
+    id = localStorage.getItem(getUserCompanyKey()) || localStorage.getItem(LAST_COMPANY_KEY);
+  } catch { id = null; }
   if (!id) return null;
   return (companies || []).find(c => c.id === id) || null;
 }
@@ -1602,6 +1813,245 @@ async function deleteCustomer() {
   toast('Client deleted', 'success');
 }
 
+// ── Trucks / Jobs / Expenses (operations layer) ─────────────────────────────
+// Workspace-shared: in Supabase mode RLS lets every authenticated user read
+// and write these (an owner must see/invoice the driver's jobs). Local mode
+// mirrors the customers/invoices dual-mode shape (Flask API + localStorage).
+const JOBS_LS = 'inv_jobs_v1';
+function _loadJobsLS() {
+  try { const r = localStorage.getItem(JOBS_LS); return r ? JSON.parse(r) : []; } catch { return []; }
+}
+function _saveJobsLS(list) {
+  try { localStorage.setItem(JOBS_LS, JSON.stringify(list)); } catch {}
+}
+
+async function loadTrucks() {
+  if (supabaseActive()) {
+    const { data, error } = await supabaseClient
+      .from('trucks')
+      .select('id,label,plate,notes')
+      .order('created_at', { ascending: true });
+    if (error) { console.warn('Trucks load skipped:', error.message || error); trucks = []; }
+    else trucks = data || [];
+    return;
+  }
+  try { trucks = await API('GET', '/api/trucks'); }
+  catch { trucks = []; }
+}
+
+async function loadJobs() {
+  if (supabaseActive()) {
+    const { data, error } = await supabaseClient
+      .from('jobs')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      // Most likely the migration hasn't been applied yet — fall back to cache.
+      console.warn('Jobs load skipped:', error.message || error);
+      jobs = _loadJobsLS();
+      return;
+    }
+    jobs = data || [];
+    return;
+  }
+  try {
+    jobs = await API('GET', '/api/jobs');
+    _saveJobsLS(jobs);
+  } catch {
+    jobs = _loadJobsLS();
+  }
+}
+
+async function loadExpenses() {
+  if (supabaseActive()) {
+    const { data, error } = await supabaseClient
+      .from('expenses')
+      .select('*')
+      .order('date', { ascending: false });
+    if (error) { console.warn('Expenses load skipped:', error.message || error); expenses = []; }
+    else expenses = data || [];
+    return;
+  }
+  try { expenses = await API('GET', '/api/expenses'); }
+  catch { expenses = []; }
+}
+
+// Next job number from the loaded list — single source of truth, mirrors
+// computeNextInvoiceNumber. Format JOB-001.
+function computeNextJobNumber() {
+  let max = 0;
+  (jobs || []).forEach(j => {
+    const m = String(j?.job_number || '').match(/(\d+)\s*$/);
+    if (m) max = Math.max(max, parseInt(m[1], 10) || 0);
+  });
+  return 'JOB-' + String(max + 1).padStart(3, '0');
+}
+
+// Upsert a job. `job` carries date, truck_id, customer_id, job_types[],
+// status, notes, and optionally id (update) / invoice_id. Returns the saved
+// record (with id) or throws on a hard Supabase failure.
+async function saveJob(job) {
+  const isUpdate = !!job.id;
+  // Customer snapshot: customers stay per-user (RLS), but jobs are workspace-
+  // shared — so the owner can't read a driver's customer row by FK. We stamp a
+  // denormalized copy of the customer onto the job so the buyer survives across
+  // users and onto the issued invoice. customer_id is kept as a best-effort
+  // back-link only.
+  const snapshot = {
+    customer_name:           job.customer_name || '',
+    customer_address:        job.customer_address || '',
+    customer_phone:          job.customer_phone || '',
+    customer_email:          job.customer_email || '',
+    customer_net_terms_days: Number.isFinite(job.customer_net_terms_days) ? job.customer_net_terms_days : 30,
+  };
+  const base = {
+    job_number:  isUpdate ? (job.job_number || '') : computeNextJobNumber(),
+    date:        job.date || new Date().toISOString().slice(0, 10),
+    truck_id:    job.truck_id || null,
+    customer_id: job.customer_id || null,
+    ...snapshot,
+    job_types:   Array.isArray(job.job_types) ? job.job_types : [],
+    items:       Array.isArray(job.items) ? job.items : [],
+    total:       Number(job.total) || 0,
+    status:      job.status || 'pending',
+    notes:       job.notes || '',
+    invoice_id:  job.invoice_id || null,
+    created_by:  job.created_by || authDisplayName() || 'local',
+  };
+  if (supabaseActive()) {
+    if (isUpdate) {
+      // Don't overwrite job_number/created_by/invoice_id from the form.
+      const payload = { date: base.date, truck_id: base.truck_id, customer_id: base.customer_id,
+        ...snapshot, job_types: base.job_types, items: base.items, total: base.total, status: base.status, notes: base.notes };
+      const { data, error } = await supabaseClient.from('jobs').update(payload).eq('id', job.id).select('*').single();
+      if (error) { toast(error.message || 'Job save failed', 'error'); throw error; }
+      const idx = jobs.findIndex(j => j.id === data.id);
+      if (idx >= 0) jobs[idx] = data; else jobs.unshift(data);
+      return data;
+    }
+    // Insert with unique-job_number retry — mirrors invoice issuance. Two
+    // clients (owner + driver) can compute the same JOB-### off stale lists;
+    // the DB unique index is the authority, we recompute + retry on 23505.
+    let lastErr = null;
+    for (let i = 0; i < ISSUE_MAX_RETRIES; i++) {
+      const candidate = { ...base, job_number: computeNextJobNumber(), user_id: supabaseUser.id };
+      const { data, error } = await supabaseClient.from('jobs').insert(candidate).select('*').single();
+      if (!error) {
+        const idx = jobs.findIndex(j => j.id === data.id);
+        if (idx >= 0) jobs[idx] = data; else jobs.unshift(data);
+        return data;
+      }
+      lastErr = error;
+      if (!isUniqueViolation(error)) { toast(error.message || 'Job save failed', 'error'); throw error; }
+      await loadJobs().catch(() => {});   // refresh so computeNextJobNumber advances
+    }
+    toast('Could not assign a unique job number', 'error');
+    throw lastErr || new Error('Job save failed');
+  }
+  // Local mode (cache writes only here — never in Supabase mode).
+  if (isUpdate) {
+    const patch = { date: base.date, truck_id: base.truck_id, customer_id: base.customer_id,
+      ...snapshot, job_types: base.job_types, items: base.items, total: base.total, status: base.status, notes: base.notes };
+    try {
+      const r = await API('PATCH', '/api/jobs/' + encodeURIComponent(job.id), patch);
+      const saved = r.job || { ...(jobs.find(j => j.id === job.id) || {}), ...patch, id: job.id };
+      const idx = jobs.findIndex(j => j.id === job.id);
+      if (idx >= 0) jobs[idx] = saved; else jobs.unshift(saved);
+      _saveJobsLS(jobs);
+      return saved;
+    } catch {
+      const idx = jobs.findIndex(j => j.id === job.id);
+      const saved = { ...(jobs[idx] || {}), ...patch, id: job.id };
+      if (idx >= 0) jobs[idx] = saved; else jobs.unshift(saved);
+      _saveJobsLS(jobs);
+      return saved;
+    }
+  }
+  try {
+    const r = await API('POST', '/api/jobs', base);
+    const saved = r.job || { ...base, id: r.id || ('jb' + Date.now()) };
+    jobs.unshift(saved);
+    _saveJobsLS(jobs);
+    return saved;
+  } catch {
+    const saved = { ...base, id: 'jb' + Date.now(), created_at: new Date().toISOString() };
+    jobs.unshift(saved);
+    _saveJobsLS(jobs);
+    return saved;
+  }
+}
+
+// Patch a job (e.g. link invoice_id after issuing, or flip status). The cache
+// is written only in local mode — in Supabase mode the shared `jobs` array
+// must not be persisted to the per-browser localStorage key (cross-session).
+async function patchJob(id, fields) {
+  const idx = jobs.findIndex(j => j.id === id);
+  if (idx >= 0) jobs[idx] = { ...jobs[idx], ...fields };
+  if (supabaseActive()) {
+    const { error } = await supabaseClient.from('jobs').update(fields).eq('id', id);
+    if (error) { console.warn('Job patch failed:', error.message); await loadJobs(); }
+  } else {
+    _saveJobsLS(jobs);
+    try { await API('PATCH', '/api/jobs/' + encodeURIComponent(id), fields); }
+    catch { /* localStorage already updated */ }
+  }
+  return (idx >= 0) ? jobs[idx] : null;
+}
+
+async function deleteJobRecord(id) {
+  jobs = jobs.filter(j => j.id !== id);
+  if (supabaseActive()) {
+    const { error } = await supabaseClient.from('jobs').delete().eq('id', id);
+    if (error) { console.warn('Job delete failed:', error.message); await loadJobs(); }
+  } else {
+    _saveJobsLS(jobs);
+    try { await API('DELETE', '/api/jobs/' + encodeURIComponent(id)); } catch {}
+  }
+}
+
+// Read the signed-in user's role + assigned truck once on login. Defaults to
+// owner (full access) on any error or in local mode, so a missing migration
+// never locks anyone out. Kept separate from loadRemoteDocumentSettings so
+// the new columns can't break the main settings read (schema-cache tolerant).
+async function loadUserRole() {
+  currentUserRole = 'owner';
+  currentAssignedTruckId = null;
+  if (!supabaseActive()) { roleResolved = true; return; }   // offline owner is authoritative
+  const { data, error } = await supabaseClient
+    .from('user_settings')
+    .select('role,assigned_truck_id')
+    .eq('user_id', supabaseUser.id)
+    .maybeSingle();
+  if (error) { console.warn('Role load skipped:', error.message || error); roleResolved = true; return; }
+  if (data) {
+    currentUserRole = data.role === 'driver' ? 'driver' : 'owner';
+    currentAssignedTruckId = data.assigned_truck_id || null;
+  }
+  roleResolved = true;
+}
+
+// Show/hide nav links + set a body role class. Driver sees Home, Jobs,
+// Profile only; owner sees everything except Profile.
+function applyRoleNav() {
+  const driver = currentUserRole === 'driver';
+  const ownerOnly = ['drafts', 'invoices', 'customers', 'companies', 'financial', 'settings'];
+  document.querySelectorAll('.topbar-nav .nav-link, .mobile-nav-drawer .mobile-nav-item').forEach(el => {
+    const r = el.dataset.route;
+    if (r === 'profile') { el.hidden = !driver; return; }
+    if (r === 'home' || r === 'jobs') { el.hidden = false; return; }
+    if (ownerOnly.includes(r)) el.hidden = driver;
+  });
+  document.body.classList.toggle('role-driver', driver);
+  document.body.classList.toggle('role-owner', !driver);
+}
+
+// Convenience: load the full operations layer (trucks + jobs) for the
+// signed-in/local session. Called from boot + auth transitions.
+async function loadOperationsData() {
+  await loadTrucks().catch(() => {});
+  await loadJobs().catch(() => {});
+}
+
 // ── Invoices (persistence layer) ───────────────────────────────────────────
 // Mirrors the customers/companies dual-mode shape: Supabase when signed in,
 // local JSON / localStorage otherwise. All callers use these helpers — never
@@ -1648,6 +2098,7 @@ async function saveInvoice(record) {
     due_date: record.due_date || null,
     customer_id: record.customer_id || null,
     company_id:  record.company_id  || null,
+    job_id:      record.job_id || null,
     buyer:    record.buyer || {},
     seller:   record.seller || {},
     total:    Number(record.total) || 0,
@@ -1849,10 +2300,13 @@ function renderDropdown(type) {
           <div class="di-sub">${[item.phone, item.email].filter(Boolean).join(' · ') || '—'}</div>
         </div>
         <span class="di-del" title="Delete" onclick="event.stopPropagation();quickDelete('${type}','${item.id}')">×</span>`;
-      div.addEventListener('mousedown', (e) => {
+      const handleSelect = (e) => {
         if (e.target.classList.contains('di-del')) return;
+        e.preventDefault();
         selectItem(type, item);
-      });
+      };
+      div.addEventListener('pointerdown', handleSelect);
+      div.addEventListener('mousedown', handleSelect);
       dd.appendChild(div);
     });
   }
@@ -2440,29 +2894,125 @@ function refreshDraftEditorChrome() {
   renderIssueCompanyOptions();
 }
 
-// Populate the "Issuing from" company <select> with the saved companies
-// and reflect the current draft's company_id. The empty option is
-// "Individual / no company".
+// Populate both the desktop "Issuing from" selector and the mobile/header
+// issuer-card selector with saved companies, reflecting current draft's company_id.
 function renderIssueCompanyOptions() {
   const sel = document.getElementById('issue-company');
-  if (!sel) return;
+  const docSel = document.getElementById('doc-company-select');
+  const badgeText = document.getElementById('issuer-badge-text');
   const current = selCompId || '';
-  const opts = ['<option value="">Individual / no company</option>'];
+  const opts = ['<option value="">Individual / no company (فرد بدون شركة)</option>'];
   (companies || []).forEach(c => {
     opts.push(`<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || '(unnamed company)')}</option>`);
   });
-  sel.innerHTML = opts.join('');
-  // If the draft's company no longer exists, fall back to Individual.
-  sel.value = (companies || []).some(c => c.id === current) ? current : '';
+  const html = opts.join('');
+  if (sel) {
+    sel.innerHTML = html;
+    sel.value = (companies || []).some(c => c.id === current) ? current : '';
+  }
+  if (docSel) {
+    docSel.innerHTML = html;
+    docSel.value = (companies || []).some(c => c.id === current) ? current : '';
+  }
+  const comp = (companies || []).find(c => c.id === current);
+  const compLabel = comp ? (comp.name || 'Company') : 'Individual';
+  const topLabel = document.getElementById('topbar-company-label');
+  if (topLabel) topLabel.textContent = compLabel;
+  const metaLabel = document.getElementById('meta-issuer-name');
+  if (metaLabel) metaLabel.textContent = compLabel;
+  if (badgeText) badgeText.textContent = compLabel;
+  updateCompanyPreviewDetails(comp);
 }
 
-// User picked a company (or Individual) from the issue-card selector.
-// Applies it to the current draft's seller + company_id, remembers it
-// as the default for future new invoices, and re-renders.
+function updateCompanyPreviewDetails(comp) {
+  const nameEl = document.getElementById('summon-comp-name');
+  const addrEl = document.getElementById('summon-comp-addr');
+  const contactEl = document.getElementById('summon-comp-contact');
+  if (nameEl) nameEl.textContent = comp ? (comp.name || '(Unnamed company)') : 'Individual / No company';
+  if (addrEl) addrEl.textContent = comp ? (comp.address || 'No address configured') : 'Personal invoice — no business address';
+  if (contactEl) {
+    if (comp) {
+      contactEl.textContent = `Phone: ${comp.phone || '—'} | Email: ${comp.email || '—'}`;
+    } else {
+      contactEl.textContent = 'Individual invoices include the personal service disclaimer.';
+    }
+  }
+}
+
+function openCompanyModal() {
+  const modal = document.getElementById('company-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    const comp = selCompId ? (companies || []).find(c => c.id === selCompId) : null;
+    updateCompanyPreviewDetails(comp);
+  }
+}
+
+function closeCompanyModal() {
+  const modal = document.getElementById('company-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function closeCompanyModalOnBackdrop(e) {
+  if (e.target.id === 'company-modal') closeCompanyModal();
+}
+
+function toggleCompanyModal() {
+  const modal = document.getElementById('company-modal');
+  if (modal && modal.style.display === 'flex') {
+    closeCompanyModal();
+  } else {
+    openCompanyModal();
+  }
+}
+
+function toggleNotesCard() {
+  const card = document.getElementById('notes-card');
+  const body = document.getElementById('notes-body');
+  const actionPill = document.getElementById('notes-action-pill');
+  if (!card || !body) return;
+  const isCollapsed = card.classList.contains('collapsed');
+  if (isCollapsed) {
+    card.classList.remove('collapsed');
+    body.style.display = 'block';
+    if (actionPill) actionPill.textContent = '− Minimize';
+  } else {
+    card.classList.add('collapsed');
+    body.style.display = 'none';
+    if (actionPill) actionPill.textContent = '+ Expand';
+  }
+}
+
+function updateNotesBadge() {
+  const val = (document.getElementById('notes')?.value || '').trim();
+  const badge = document.getElementById('notes-badge');
+  if (badge) {
+    badge.style.display = val ? 'inline-block' : 'none';
+  }
+}
+
+// User picked a company from either desktop or mobile/header company selector.
 function onIssueCompanyChange() {
   const sel = document.getElementById('issue-company');
-  if (!sel || !editingDraftId) return;
-  const id = sel.value || '';
+  const docSel = document.getElementById('doc-company-select');
+  const id = sel ? (sel.value || '') : (docSel ? docSel.value || '' : '');
+  if (docSel && docSel.value !== id) docSel.value = id;
+  applySelectedCompany(id);
+}
+
+function onDocCompanySelectChange() {
+  const docSel = document.getElementById('doc-company-select');
+  const sel = document.getElementById('issue-company');
+  const id = docSel ? (docSel.value || '') : (sel ? sel.value || '' : '');
+  if (sel && sel.value !== id) sel.value = id;
+  applySelectedCompany(id);
+}
+
+function applySelectedCompany(id) {
   const company = id ? (companies || []).find(c => c.id === id) : null;
   const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v ?? ''; };
   if (company) {
@@ -2479,10 +3029,28 @@ function onIssueCompanyChange() {
     selCompId = null;
   }
   rememberLastCompany(selCompId);
+  const compLabel = company ? (company.name || 'Company') : 'Individual';
+  const topLabel = document.getElementById('topbar-company-label');
+  if (topLabel) topLabel.textContent = compLabel;
+  const metaLabel = document.getElementById('meta-issuer-name');
+  if (metaLabel) metaLabel.textContent = compLabel;
+  const badgeText = document.getElementById('issuer-badge-text');
+  if (badgeText) badgeText.textContent = compLabel;
+  updateCompanyPreviewDetails(company);
   // Persist company_id on the draft record (collectData omits it, so set
   // it directly), then write the updated seller fields via autosave.
-  if (drafts[editingDraftId]) {
+  if (editingDraftId && drafts[editingDraftId]) {
     drafts[editingDraftId].company_id = selCompId;
+    if (company) {
+      drafts[editingDraftId].seller = {
+        name: company.name || '',
+        address: company.address || '',
+        phone: company.phone || '',
+        email: company.email || ''
+      };
+    } else {
+      drafts[editingDraftId].seller = { name: '', address: '', phone: '', email: '' };
+    }
   }
   writeEditingDraft();
   recalc();
@@ -2615,6 +3183,13 @@ async function issueDraft() {
         toast(`Issued ${saved.number}, but couldn't void the original — please void it manually`, 'error');
       }
     }
+    // If this draft was started from a job, link the job back to the new
+    // invoice (job.invoice_id) so the job detail shows "Invoiced". Best-effort:
+    // the invoice is already saved either way.
+    const linkedJobId = drafts[editingDraftId]?.job_id;
+    if (linkedJobId) {
+      try { await patchJob(linkedJobId, { invoice_id: saved.id }); } catch { /* non-fatal */ }
+    }
     // Draft is now superseded by the saved record; remove it.
     deleteDraftV2(editingDraftId);
     editingDraftId = null;
@@ -2689,9 +3264,13 @@ function buildIssueRecord(draft, number, pdfInfo) {
     // resetEditorForm nulls when the draft is opened (H4 in the audit).
     customer_id: draft.customer_id || selCustId || null,
     company_id:  draft.company_id  || selCompId || null,
+    job_id:      draft.job_id || null,
     buyer:       payload.buyer,
     seller:      payload.seller,
     total,
+    amount_paid: 0.0,
+    balance_due: total,
+    payments:    [],
     currency:    payload.currency,
     payload,
     history:     [{ at: new Date().toISOString(), from: 'draft', to: 'issued' }],
@@ -2722,7 +3301,7 @@ async function insertInvoiceRow(record) {
   // PostgREST cache hasn't refreshed), we drop just that column and
   // retry. The user can apply the relevant migration later without
   // blocking issuance.
-  const OPTIONAL_COLUMNS = ['company_id', 'superseded_by', 'sent_at'];
+  const OPTIONAL_COLUMNS = ['company_id', 'job_id', 'superseded_by', 'sent_at'];
   const fullBase = {
     number:   record.number,
     status:   record.status || 'issued',
@@ -2730,6 +3309,7 @@ async function insertInvoiceRow(record) {
     due_date: record.due_date || null,
     customer_id: record.customer_id || null,
     company_id:  record.company_id  || null,
+    job_id:      record.job_id || null,
     buyer:    record.buyer || {},
     seller:   record.seller || {},
     total:    Number(record.total) || 0,
@@ -2745,7 +3325,7 @@ async function insertInvoiceRow(record) {
   // Columns that may carry a stale/invalid reference. If the DB rejects
   // the link (FK violation 23503, invalid uuid 22P02) we drop it and
   // still save the invoice — the link is a nicety, not a blocker.
-  const DROPPABLE_LINKS = ['company_id', 'customer_id'];
+  const DROPPABLE_LINKS = ['company_id', 'customer_id', 'job_id'];
   for (let attempt = 0; attempt < OPTIONAL_COLUMNS.length + DROPPABLE_LINKS.length + 1; attempt++) {
     // Bound each attempt so a stalled Supabase call (VPN/network) can't
     // hang the Save button forever — the true cause of the "freeze on
@@ -2803,7 +3383,12 @@ async function insertInvoiceRow(record) {
     // the link and retry so the invoice still saves.
     if ((error.code === '23503' || error.code === '22P02')) {
       const linkMsg = String(error.message || '');
-      const link = DROPPABLE_LINKS.find(c => c in base && (linkMsg.includes(c) || true));
+      // Drop the column the error actually names. Fall back to dropping the
+      // least-essential present link (job_id) only when the message names
+      // none — 22P02 (invalid uuid) often omits the column name. NEVER blindly
+      // drop company_id/customer_id, which would strip valid links.
+      let link = DROPPABLE_LINKS.find(c => c in base && linkMsg.includes(c));
+      if (!link) link = ['job_id', 'customer_id', 'company_id'].find(c => c in base);
       if (link) {
         delete base[link];
         dropped.push(link + ' (bad reference)');
@@ -2912,12 +3497,17 @@ function setInvoiceViewerChrome(inv) {
     return;
   }
   const eff = effectiveInvoiceStatus(inv);
-  const isPaid  = inv.status === 'paid';
+  const isPaid  = eff === 'paid';
   const isVoid  = inv.status === 'void';
   const isDraft = inv.status === 'draft';
+  const cur     = inv.currency || 'USD';
+  const total   = Number(inv.total) || 0;
+  const paid    = Number(inv.amount_paid != null ? inv.amount_paid : (isPaid ? total : 0));
+  const bal     = Math.max(0, total - paid);
+
   const payAction = isPaid
     ? `<button class="ghost-btn" type="button" onclick="markUnpaid('${escapeHtml(inv.id)}')">Unpay</button>`
-    : `<button class="ghost-btn" type="button" onclick="markInvoicePaid('${escapeHtml(inv.id)}')">Mark paid</button>`;
+    : `<button class="primary-btn" style="background:var(--accent); color:#fff; font-weight:600;" type="button" onclick="openPaymentModal('${escapeHtml(inv.id)}')">Record payment</button>`;
   const voidAction = (isVoid || isDraft) ? '' :
     `<button class="ghost-btn danger" type="button" onclick="voidInvoiceFromDetail('${escapeHtml(inv.id)}')">Void</button>`;
   const editAction = isVoid ? '' :
@@ -2943,14 +3533,28 @@ function setInvoiceViewerChrome(inv) {
       </div>`;
   }
 
+  const paymentsBreakdown = (Array.isArray(inv.payments) && inv.payments.length > 0 || eff === 'partially_paid') ? `
+    <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-top:10px;">
+      <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+        <span style="color:var(--text3)">Total:</span><strong>${fmtMoney(total, cur)}</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+        <span style="color:var(--text3)">Paid:</span><strong style="color:#16a34a">${fmtMoney(paid, cur)}</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700; border-top:1px dashed var(--border); padding-top:4px;">
+        <span>Balance due:</span><strong style="color:#dc2626">${fmtMoney(bal, cur)}</strong>
+      </div>
+    </div>` : '';
+
   statusSection.innerHTML = `
     <div class="side-title">Invoice ${escapeHtml(inv.number || '')}</div>
     <div class="status-row">
-      <span class="status-badge" data-status="${eff}">${eff.charAt(0).toUpperCase() + eff.slice(1)}</span>
+      <span class="status-badge" data-status="${eff}">${statusBadge(eff)}</span>
       <span class="status-meta">${escapeHtml(inv.date || '')}</span>
     </div>
+    ${paymentsBreakdown}
     ${supersedeBanner}
-    <div class="status-side-actions invoice-detail-actions">
+    <div class="status-side-actions invoice-detail-actions" style="margin-top:12px;">
       ${payAction}
       <button class="ghost-btn" type="button" onclick="duplicateInvoiceToDraft('${escapeHtml(inv.id)}')">Duplicate</button>
       ${editAction}
@@ -2958,6 +3562,47 @@ function setInvoiceViewerChrome(inv) {
       <button class="ghost-btn" type="button" onclick="openInvoicePdf('${escapeHtml(inv.id)}')">${isMobileDevice() ? 'Preview / Share PDF' : 'Open PDF'}</button>
     </div>
     <p class="side-note" style="margin-top:10px">This is a read-only view of an issued invoice. To change it, use <strong>Edit</strong> — that creates a new draft and supersedes this one when issued.</p>`;
+
+  // Update issuer bar for read-only view
+  const docCompSel = document.getElementById('doc-company-select');
+  const badgeText = document.getElementById('issuer-badge-text');
+  const comp = inv.company_id ? (companies || []).find(c => c.id === inv.company_id) : null;
+  const compName = comp ? comp.name : (inv.payload?.seller?.name || 'Individual');
+  if (docCompSel) {
+    docCompSel.value = inv.company_id || '';
+    docCompSel.disabled = true;
+  }
+  if (badgeText) {
+    badgeText.textContent = compName;
+  }
+
+  // Configure mobile bottom bar when on invoice view
+  const mobBarMeta = document.getElementById('mobile-bar-meta');
+  const mobActions = document.querySelector('.mobile-action-bar .mobile-actions');
+  if (mobBarMeta) {
+    const statusLabel = isPaid ? 'Settled / مدفوعة' : (isVoid ? 'Voided / ملغاة' : `${fmtMoney(bal, cur)} due`);
+    mobBarMeta.innerHTML = `
+      <strong style="font-size:13.5px">${statusLabel}</strong>
+      <span id="mobile-pdf-status" class="status-badge" data-status="${eff}" style="font-size:10px; padding:2px 6px;">${statusBadge(eff)}</span>
+    `;
+  }
+  if (mobActions) {
+    const reissueBtn = isVoid ? '' : `
+      <button class="mobile-action-btn secondary" type="button" onclick="startSupersedeFlow('${escapeHtml(inv.id)}')">
+        <svg viewBox="0 0 24 24" fill="none" style="width:13px;height:13px;margin-right:4px;" aria-hidden="true">
+          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Reissue
+      </button>`;
+    const primaryBtn = (!isPaid && !isVoid)
+      ? `<button class="mobile-action-btn primary" type="button" onclick="openPaymentModal('${escapeHtml(inv.id)}')">Pay</button>`
+      : `<button class="mobile-action-btn primary" type="button" onclick="openInvoicePdf('${escapeHtml(inv.id)}')">Share PDF</button>`;
+    const moreBtn = `
+      <button class="mobile-action-btn icon-only" type="button" onclick="openMobileInvoiceActionSheet('${escapeHtml(inv.id)}')" title="More actions">
+        ⋯
+      </button>`;
+    mobActions.innerHTML = `${reissueBtn}${primaryBtn}${moreBtn}`;
+  }
 }
 
 // Cleanup when leaving the invoice-detail route.
@@ -2973,6 +3618,88 @@ function clearInvoiceViewerChrome() {
   if (statusSection) delete statusSection.dataset.detailMode;
   const genBtn = document.getElementById('gen-btn');
   if (genBtn) genBtn.hidden = false;
+
+  const docCompSel = document.getElementById('doc-company-select');
+  if (docCompSel) docCompSel.disabled = false;
+  const mobActions = document.querySelector('.mobile-action-bar .mobile-actions');
+  if (mobActions) {
+    mobActions.innerHTML = `
+      <button class="mobile-action-btn primary" id="mobile-issue-btn" type="button" onclick="issueDraft()">Save &amp; Print</button>
+    `;
+  }
+  closeMobileInvoiceActionSheet();
+}
+
+function openMobileInvoiceActionSheet(invId) {
+  const inv = (invoices || []).find(r => r.id === invId);
+  if (!inv) return;
+  const eff = effectiveInvoiceStatus(inv);
+  const isPaid = eff === 'paid';
+  const isVoid = inv.status === 'void';
+  const sheet = document.getElementById('mobile-invoice-actions-sheet');
+  const sheetTitle = document.getElementById('action-sheet-title');
+  const sheetBody = document.getElementById('action-sheet-body');
+  if (!sheet || !sheetBody) return;
+
+  if (sheetTitle) sheetTitle.textContent = `Invoice ${inv.number || ''} Actions`;
+
+  sheetBody.innerHTML = `
+    ${!isVoid ? `
+      <button class="action-sheet-btn primary" type="button" onclick="closeMobileInvoiceActionSheet(); startSupersedeFlow('${escapeHtml(inv.id)}')">
+        <svg viewBox="0 0 24 24" fill="none" class="action-sheet-btn-icon" aria-hidden="true">
+          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span><strong>Reissue / Edit Invoice (إعادة إصدار / تعديل)</strong><br><small style="opacity:.8">Supersedes this invoice and creates an editable copy</small></span>
+      </button>
+    ` : ''}
+
+    <button class="action-sheet-btn" type="button" onclick="closeMobileInvoiceActionSheet(); openInvoicePdf('${escapeHtml(inv.id)}')">
+      <svg viewBox="0 0 24 24" fill="none" class="action-sheet-btn-icon" aria-hidden="true">
+        <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span><strong>Preview &amp; Share PDF / معاينة ومشاركة</strong><br><small style="opacity:.8">Open, print, or share via WhatsApp / AirDrop</small></span>
+    </button>
+
+    ${!isPaid && !isVoid ? `
+      <button class="action-sheet-btn" type="button" onclick="closeMobileInvoiceActionSheet(); openPaymentModal('${escapeHtml(inv.id)}')">
+        <svg viewBox="0 0 24 24" fill="none" class="action-sheet-btn-icon" aria-hidden="true">
+          <path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span><strong>Record Payment / تسجيل دفعة</strong><br><small style="opacity:.8">Log partial or full payment</small></span>
+      </button>
+    ` : ''}
+
+    ${isPaid ? `
+      <button class="action-sheet-btn" type="button" onclick="closeMobileInvoiceActionSheet(); markUnpaid('${escapeHtml(inv.id)}')">
+        <span>Mark Unpaid / إلغاء الدفع</span>
+      </button>
+    ` : ''}
+
+    <button class="action-sheet-btn" type="button" onclick="closeMobileInvoiceActionSheet(); duplicateInvoiceToDraft('${escapeHtml(inv.id)}')">
+      <svg viewBox="0 0 24 24" fill="none" class="action-sheet-btn-icon" aria-hidden="true">
+        <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
+        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="2"/>
+      </svg>
+      <span><strong>Duplicate to New Draft / نسخ كمسودة جديدة</strong></span>
+    </button>
+
+    ${!isVoid ? `
+      <button class="action-sheet-btn danger" type="button" onclick="closeMobileInvoiceActionSheet(); voidInvoiceFromDetail('${escapeHtml(inv.id)}')">
+        <svg viewBox="0 0 24 24" fill="none" class="action-sheet-btn-icon" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+          <path d="M4.93 4.93l14.14 14.14" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span><strong>Void Invoice / إلغاء الفاتورة</strong></span>
+      </button>
+    ` : ''}
+  `;
+
+  sheet.hidden = false;
+}
+
+function closeMobileInvoiceActionSheet() {
+  const sheet = document.getElementById('mobile-invoice-actions-sheet');
+  if (sheet) sheet.hidden = true;
 }
 
 // Void from the detail page action bar. Same effect as the list-row
@@ -3590,13 +4317,19 @@ function invoiceIsOverdue(inv) {
   return new Date() > due;
 }
 function effectiveInvoiceStatus(inv) {
+  if (!inv) return 'draft';
   if (inv.status === 'void') return 'void';
-  if (inv.status === 'paid') return 'paid';
+  const total = Number(inv.total) || 0;
+  const paid = Number(inv.amount_paid != null ? inv.amount_paid : (inv.status === 'paid' ? total : 0));
+  if (inv.status === 'paid' || (total > 0 && paid >= total - 0.001)) return 'paid';
+  if (paid > 0.001 && paid < total) return 'partially_paid';
   if (invoiceIsOverdue(inv)) return 'overdue';
   return inv.status || 'draft';
 }
 function statusBadge(status) {
-  const label = status.charAt(0).toUpperCase() + status.slice(1);
+  let label = status ? (status.charAt(0).toUpperCase() + status.slice(1)) : 'Draft';
+  if (status === 'partially_paid') label = 'Partially paid';
+  if (status === 'issued') label = 'Unpaid';
   return `<span class="status-badge" data-status="${status}">${label}</span>`;
 }
 function fmtMoney(amount, currency) {
@@ -3642,7 +4375,7 @@ function renderChipCounts() {
   const visibleSource = invListShowVoid
     ? invoices
     : invoices.filter(r => effectiveInvoiceStatus(r) !== 'void');
-  const counts = { all: visibleSource.length, draft: 0, issued: 0, overdue: 0, paid: 0, void: 0 };
+  const counts = { all: visibleSource.length, draft: 0, issued: 0, partially_paid: 0, overdue: 0, paid: 0, void: 0 };
   // Void count is always the total — that chip ignores the show-void toggle
   // so the user can click it to switch into "voided only" view.
   invoices.forEach(r => {
@@ -3665,17 +4398,31 @@ function rowHtml(inv) {
   const buyerName = inv.buyer?.name || '(no buyer)';
   const buyerMeta = inv.buyer?.email || inv.buyer?.phone || '';
   const due = inv.due_date || '—';
-  const isPaid = inv.status === 'paid';
+  const isPaid = eff === 'paid';
   const payBtn = isPaid
     ? `<button class="row-action" type="button" onclick="event.stopPropagation(); markUnpaid('${inv.id}')">Unpay</button>`
-    : `<button class="row-action pay" type="button" onclick="event.stopPropagation(); markInvoicePaid('${inv.id}')">Paid</button>`;
+    : `<button class="row-action pay" type="button" onclick="event.stopPropagation(); openPaymentModal('${inv.id}')">Pay</button>`;
   const history = Array.isArray(inv.history) ? inv.history.slice().reverse() : [];
-  const historyHtml = history.length
-    ? `<div class="invoice-row-history" onclick="event.stopPropagation()">
-         <strong>Status history</strong>
-         <ol>${history.map(h => `<li>${escapeHtml(h.at?.slice(0, 10) || '')} · ${escapeHtml(h.from || '')} → ${escapeHtml(h.to || '')}</li>`).join('')}</ol>
+  const payments = Array.isArray(inv.payments) ? inv.payments.slice().reverse() : [];
+  const paymentsSummary = payments.length
+    ? `<div style="margin-top:4px; font-size:11px; color:var(--text2)">
+         <strong>Payments received:</strong> ${payments.map(p => `${escapeHtml(p.at?.slice(0, 10) || '')} · ${fmtMoney(p.amount, inv.currency)} (${escapeHtml(p.method || 'cash')})`).join(' · ')}
        </div>`
     : '';
+  const historyHtml = (history.length || payments.length)
+    ? `<div class="invoice-row-history" onclick="event.stopPropagation()">
+         <strong>Status &amp; payment history</strong>
+         ${paymentsSummary}
+         <ol>${history.map(h => `<li>${escapeHtml(h.at?.slice(0, 10) || '')} · ${escapeHtml(h.from || '')} → ${escapeHtml(h.to || '')} ${h.note ? '· ' + escapeHtml(h.note) : ''}</li>`).join('')}</ol>
+       </div>`
+    : '';
+
+  let totalDisplay = `<div>${fmtMoney(inv.total, inv.currency)}</div>`;
+  if (eff === 'partially_paid') {
+    const bal = inv.balance_due != null ? inv.balance_due : (Number(inv.total || 0) - Number(inv.amount_paid || 0));
+    totalDisplay += `<div class="invoice-payment-pill partial">Bal ${fmtMoney(bal, inv.currency)}</div>`;
+  }
+
   return `
     <div class="invoice-row${isSelected ? ' selected' : ''}${eff === 'void' ? ' voided' : ''}" data-id="${inv.id}" onclick="openInvoiceFromList('${inv.id}')">
       <label class="row-check" onclick="event.stopPropagation()">
@@ -3689,9 +4436,10 @@ function rowHtml(inv) {
       <div class="row-date">${escapeHtml(inv.date || '')}</div>
       <div class="row-due">${escapeHtml(due)}</div>
       <div class="row-status">${statusBadge(eff)}</div>
-      <div class="row-total">${fmtMoney(inv.total, inv.currency)}</div>
+      <div class="row-total">${totalDisplay}</div>
       <div class="row-actions" onclick="event.stopPropagation()">
         ${payBtn}
+        ${eff !== 'void' ? `<button class="row-action reissue" type="button" onclick="event.stopPropagation(); startSupersedeFlow('${inv.id}')" title="Reissue / Edit">Reissue</button>` : ''}
         <button class="row-action" type="button" onclick="duplicateInvoiceFromList('${inv.id}')">Copy</button>
         <button class="row-action" type="button" onclick="toggleHistoryRow(this)">⋯</button>
         <button class="row-action danger" type="button" onclick="deleteInvoiceFromList('${inv.id}')" aria-label="Delete">✕</button>
@@ -4085,43 +4833,147 @@ function goToCustomerForCurrentBuyer() {
 // invoice for this customer" button on the detail page.
 let _currentCustomerDetailId = null;
 
+function getCustomerInvoices(cust) {
+  if (!cust) return [];
+  const cName = (cust.name || '').trim().toLowerCase();
+  return (invoices || []).filter(r =>
+    (cust.id && r.customer_id === cust.id) ||
+    (cName && (r.buyer?.name || '').trim().toLowerCase() === cName)
+  );
+}
+
+function getCustomerReports(cust) {
+  if (!cust) return [];
+  const cName = (cust.name || '').trim().toLowerCase();
+  return (jobs || []).filter(j =>
+    (cust.id && j.customer_id === cust.id) ||
+    (cName && (j.customer_name || '').trim().toLowerCase() === cName)
+  );
+}
+
+let _currentCustomerTab = 'invoices';
+
+function setCustomerTab(tab) {
+  _currentCustomerTab = tab;
+  document.querySelectorAll('#crm-tabs .chip').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  const invList = document.getElementById('customer-invoices-list');
+  const repList = document.getElementById('customer-reports-list');
+  const payList = document.getElementById('customer-payments-list');
+  if (invList) invList.style.display = tab === 'invoices' ? 'block' : 'none';
+  if (repList) repList.style.display = tab === 'reports' ? 'block' : 'none';
+  if (payList) payList.style.display = tab === 'payments' ? 'block' : 'none';
+}
+
 function renderCustomerDetail(customerId) {
   _currentCustomerDetailId = customerId;
   const cust = (customers || []).find(c => c.id === customerId);
-  const invs = (invoices || []).filter(r => r.customer_id === customerId);
+  const invs = getCustomerInvoices(cust);
+  const reps = getCustomerReports(cust);
+
   document.getElementById('customer-detail-name').textContent = cust?.name || 'Customer';
-  document.getElementById('customer-detail-meta').textContent = cust ? (cust.email || cust.phone || '') : '';
+  document.getElementById('customer-detail-meta').textContent = cust ? (cust.email || cust.phone || cust.address || '') : '';
   const stats = document.getElementById('customer-stats');
-  const list  = document.getElementById('customer-invoices-list');
+  const invList  = document.getElementById('customer-invoices-list');
+  const repList  = document.getElementById('customer-reports-list');
+  const payList  = document.getElementById('customer-payments-list');
+
   // Totals
   const cur = invs[0]?.currency || 'USD';
-  const totalInvoiced = invs.reduce((s, r) => s + Number(r.total || 0), 0);
-  const outstanding = invs
-    .filter(r => effectiveInvoiceStatus(r) === 'issued' || effectiveInvoiceStatus(r) === 'overdue')
-    .reduce((s, r) => s + Number(r.total || 0), 0);
-  const paidCount = invs.filter(r => r.status === 'paid').length;
-  const paidWithDate = invs.filter(r => r.status === 'paid' && r.paid_at && r.date);
-  let avgDaysToPay = '—';
-  if (paidWithDate.length) {
-    const sum = paidWithDate.reduce((s, r) => s + Math.max(0, Math.floor((new Date(r.paid_at) - new Date(r.date + 'T00:00:00')) / 864e5)), 0);
-    avgDaysToPay = Math.round(sum / paidWithDate.length) + ' days';
-  }
+  const totalInvoiced = invs.filter(r => r.status !== 'void').reduce((s, r) => s + Number(r.total || 0), 0);
+  const totalCollected = invs.filter(r => r.status !== 'void').reduce((s, r) => s + Number(r.amount_paid != null ? r.amount_paid : (r.status === 'paid' ? r.total : 0)), 0);
+  const outstanding = invs.filter(r => r.status !== 'void' && r.status !== 'paid').reduce((s, r) => {
+    const bal = r.balance_due != null ? Number(r.balance_due) : (Number(r.total || 0) - Number(r.amount_paid || 0));
+    return s + Math.max(0, bal);
+  }, 0);
+
   stats.innerHTML = `
     <div class="customer-stat"><span class="label">Total invoiced</span><span class="value">${fmtMoney(totalInvoiced, cur)}</span></div>
+    <div class="customer-stat"><span class="label">Collected</span><span class="value paid">${fmtMoney(totalCollected, cur)}</span></div>
     <div class="customer-stat"><span class="label">Outstanding</span><span class="value outstanding">${fmtMoney(outstanding, cur)}</span></div>
-    <div class="customer-stat"><span class="label">Paid invoices</span><span class="value paid">${paidCount}</span></div>
-    <div class="customer-stat"><span class="label">Avg days to pay</span><span class="value">${avgDaysToPay}</span></div>`;
-  if (invs.length === 0) {
-    list.innerHTML = `<div class="invoices-empty"><strong>No invoices for this customer yet.</strong></div>`;
-    return;
+    <div class="customer-stat"><span class="label">Service reports</span><span class="value">${reps.length}</span></div>`;
+
+  // Render Invoices tab
+  if (invList) {
+    if (invs.length === 0) {
+      invList.innerHTML = `<div class="invoices-empty"><strong>No invoices for this customer yet.</strong><br>Tap "+ New invoice" above to create one.</div>`;
+    } else {
+      invList.innerHTML = invs.map(rowHtml).join('');
+    }
   }
-  list.innerHTML = invs.map(rowHtml).join('');
+
+  // Render Reports tab
+  if (repList) {
+    if (reps.length === 0) {
+      repList.innerHTML = `<div class="invoices-empty"><strong>No service reports for this customer yet.</strong><br>Tap "+ Service report" above to log work.</div>`;
+    } else {
+      repList.innerHTML = reps.map(j => {
+        const invFlag = j.invoice_id ? '<span class="job-invoice-flag">Invoiced</span>' : '';
+        const items = Array.isArray(j.items) ? j.items : [];
+        const itemsSummary = items.length ? `<div style="font-size:12px; color:var(--text2); margin-top:4px;">${items.map(it => escapeHtml(it.description || '')).filter(Boolean).join(' · ')}</div>` : '';
+        return `
+          <div class="customer-card job-card" onclick="openJobDetail('${escapeHtml(j.id)}')">
+            <div class="customer-card-name">
+              <strong>${escapeHtml(j.job_number || 'REPORT')}</strong>
+              <span class="meta">${escapeHtml(j.date || '')} · ${escapeHtml(truckLabel(j.truck_id))}</span>
+              ${itemsSummary}
+            </div>
+            <div class="job-card-types">${jobTypeBadges(j.job_types)}</div>
+            <div class="job-card-status">${jobStatusBadge(j.status)} ${invFlag}</div>
+            <div class="customer-card-num">
+              <span class="label">Total</span>
+              <span class="value">${fmtMoney(j.total || 0, 'USD')}</span>
+            </div>
+          </div>`;
+      }).join('');
+    }
+  }
+
+  // Render Payments tab
+  if (payList) {
+    const allPayments = [];
+    invs.forEach(inv => {
+      (inv.payments || []).forEach(p => {
+        allPayments.push({ ...p, inv_number: inv.number, currency: inv.currency, inv_id: inv.id });
+      });
+    });
+    allPayments.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+
+    if (allPayments.length === 0) {
+      payList.innerHTML = `<div class="invoices-empty"><strong>No payments recorded yet.</strong><br>Payments logged on invoices will appear here in chronological order.</div>`;
+    } else {
+      payList.innerHTML = allPayments.map(p => `
+        <div class="customer-card" style="grid-template-columns: 1fr auto;">
+          <div>
+            <strong style="color:var(--text)">${escapeHtml(p.inv_number || 'Invoice')} · ${fmtMoney(p.amount, p.currency)}</strong>
+            <div class="meta" style="font-size:12px; color:var(--text3); margin-top:2px;">
+              ${escapeHtml(p.at?.slice(0, 10) || '')} · Method: ${escapeHtml(p.method || 'cash')}${p.note ? ' · ' + escapeHtml(p.note) : ''}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <span class="status-badge" data-status="paid">Paid</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  setCustomerTab(_currentCustomerTab);
 }
 
 // "+ New invoice" button on the customer detail page.
 async function newInvoiceForCurrentCustomer() {
   if (!_currentCustomerDetailId) { toast('No customer selected', 'error'); return; }
   await startNewInvoiceForCustomer(_currentCustomerDetailId);
+}
+
+// "+ Service report" button on customer detail page
+function newJobForCurrentCustomer() {
+  if (!_currentCustomerDetailId) { toast('No customer selected', 'error'); return; }
+  openJobEdit('');
+  const custSel = document.getElementById('job-customer');
+  if (custSel) custSel.value = _currentCustomerDetailId;
 }
 
 // Seed a NEW v2 draft with a saved customer's contact details, then
@@ -4154,8 +5006,9 @@ function startNewInvoiceForCustomer(customerId) {
 // Per-customer rollup from the invoices list. Returns
 // { totalInvoiced, outstanding, lastDate, byStatus: {draft, issued, paid, overdue, void}, currency }.
 function customerRollup(customerId) {
-  const invs = (invoices || []).filter(r => r.customer_id === customerId);
-  const byStatus = { draft: 0, issued: 0, paid: 0, overdue: 0, void: 0 };
+  const cust = (customers || []).find(c => c.id === customerId);
+  const invs = getCustomerInvoices(cust);
+  const byStatus = { draft: 0, issued: 0, partially_paid: 0, paid: 0, overdue: 0, void: 0 };
   let totalInvoiced = 0;
   let outstanding = 0;
   let lastDate = '';
@@ -4165,7 +5018,10 @@ function customerRollup(customerId) {
     byStatus[eff] = (byStatus[eff] || 0) + 1;
     if (eff !== 'void') {
       totalInvoiced += Number(r.total) || 0;
-      if (eff === 'issued' || eff === 'overdue') outstanding += Number(r.total) || 0;
+      if (eff !== 'paid') {
+        const bal = r.balance_due != null ? Number(r.balance_due) : (Number(r.total || 0) - Number(r.amount_paid || 0));
+        outstanding += Math.max(0, bal);
+      }
     }
     if (r.date && r.date > lastDate) lastDate = r.date;
     if (r.currency) currency = r.currency;
@@ -4772,7 +5628,48 @@ function homeTileSvg(name) {
 function renderHomePage() {
   const body = document.getElementById('home-page-body');
   if (!body) return;
+
+  // Driver home: today's jobs count + their truck label, with Jobs/Profile
+  // tiles only (drivers have no access to invoices/customers/etc).
+  if (currentUserRole === 'driver') {
+    const today = new Date().toISOString().slice(0, 10);
+    const myJobs = jobsForCurrentRole();
+    const todaysCount = myJobs.filter(j => j.date === today).length;
+    const pendingCount = myJobs.filter(j => (j.status || 'pending') === 'pending').length;
+    const truck = truckLabel(currentAssignedTruckId);
+    body.innerHTML = `
+      <section class="home-hero">
+        <h2>Hi ${escapeHtml(authDisplayName() || 'there')}.</h2>
+        <div class="home-hero-stats">
+          <span><strong>${todaysCount}</strong> job${todaysCount === 1 ? '' : 's'} today</span>
+          <span class="sep">·</span>
+          <span>${escapeHtml(truck)}</span>
+          ${pendingCount ? `<span class="sep">·</span><span><strong>${pendingCount}</strong> pending</span>` : ''}
+        </div>
+      </section>
+      <div class="home-tile-grid">
+        <button class="home-tile primary" type="button" onclick="newJobFromList()">
+          <span class="home-tile-icon">${homeTileSvg('plus')}</span>
+          <h3>New job</h3>
+          <p>Log a job on your truck.</p>
+        </button>
+        <button class="home-tile" type="button" onclick="openJobs()">
+          <span class="home-tile-icon">${homeTileSvg('list')}</span>
+          <h3>Jobs</h3>
+          <p>Your jobs on ${escapeHtml(truck)}.</p>
+        </button>
+        <button class="home-tile" type="button" onclick="openProfile()">
+          <span class="home-tile-icon">${homeTileSvg('user')}</span>
+          <h3>Profile</h3>
+          <p>Your account and assigned truck.</p>
+        </button>
+      </div>`;
+    return;
+  }
+
   const summary = summarizeAllInvoices(invoices);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const jobsToday = (jobs || []).filter(j => j.date === todayIso).length;
   const currencies = Object.keys(summary);
   const isSignedIn = supabaseActive();
   const greeting = isSignedIn ? authDisplayName() : 'there';
@@ -4805,7 +5702,9 @@ function renderHomePage() {
     activityHtml = `<div class="home-activity-list">${events.map(e => {
       const num = escapeHtml(e.inv.number || '');
       const buyer = escapeHtml(e.inv.buyer?.name || '');
-      const dest = encodeURIComponent(e.inv.id || '');
+      // Pass the raw id (escaped for the HTML attribute) — openInvoiceFromList
+      // matches invoices by raw id, like the other call sites.
+      const dest = escapeHtml(e.inv.id || '');
       return `
         <a class="home-activity-item" href="javascript:void(0)" onclick="openInvoiceFromList('${dest}')">
           <span class="dot"></span>
@@ -4826,6 +5725,11 @@ function renderHomePage() {
         <span class="home-tile-icon">${homeTileSvg('plus')}</span>
         <h3>New invoice</h3>
         <p>Start a fresh draft and generate a PDF.</p>
+      </button>
+      <button class="home-tile" type="button" onclick="openJobs()">
+        <span class="home-tile-icon">${homeTileSvg('briefcase')}</span>
+        <h3>Jobs ${jobsToday ? `<span class="home-tile-badge">${jobsToday} today</span>` : ''}</h3>
+        <p>Transport, labor &amp; item jobs across the fleet.</p>
       </button>
       <button class="home-tile" type="button" onclick="openInvoices()">
         <span class="home-tile-icon">${homeTileSvg('list')}</span>
@@ -4871,4 +5775,665 @@ function newInvoiceFromHome() {
 // next-number compute all see the authoritative list before the user
 // can act. Routes that need the latest list (Home, list pages,
 // detail) re-fetch on enter.
+
+// ════════════════════════════════════════════════════════════════════════
+// JOBS / TRUCKS — list, edit, detail, profile, and invoice-from-job.
+// Trucks/jobs are workspace-shared; role gates who sees what + who can
+// issue an invoice from a job. See the operations layer above for the
+// data helpers (loadJobs, saveJob, patchJob, computeNextJobNumber).
+// ════════════════════════════════════════════════════════════════════════
+
+const JOB_TYPE_LABELS = { transport: 'Transport', labor: 'Labor', items: 'Items' };
+
+function truckLabel(truckId) {
+  if (!truckId) return '—';
+  const t = (trucks || []).find(x => x.id === truckId);
+  return t ? (t.label || '—') : '—';
+}
+
+function jobCustomerName(custId) {
+  if (!custId) return '';
+  const c = (customers || []).find(x => x.id === custId);
+  return c ? (c.name || '') : '';
+}
+
+function jobTypeBadges(types) {
+  const arr = Array.isArray(types) ? types : [];
+  if (!arr.length) return '<span class="job-type-badge muted">—</span>';
+  return arr.map(t => `<span class="job-type-badge">${escapeHtml(JOB_TYPE_LABELS[t] || t)}</span>`).join('');
+}
+
+function jobStatusBadge(status) {
+  const s = status || 'pending';
+  const label = ({ pending: 'Pending', done: 'Done', cancelled: 'Cancelled' })[s] || s;
+  return `<span class="job-status-badge job-status-${escapeHtml(s)}">${escapeHtml(label)}</span>`;
+}
+
+// Jobs visible to the current role. Driver: only their assigned truck.
+function jobsForCurrentRole() {
+  let list = (jobs || []).slice();
+  if (currentUserRole === 'driver') {
+    list = list.filter(j => j.truck_id && j.truck_id === currentAssignedTruckId);
+  }
+  return list;
+}
+
+function setJobFilter(status) {
+  jobStatusFilter = ['pending', 'done'].includes(status) ? status : 'all';
+  document.querySelectorAll('#jobs-status-chips .chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.status === jobStatusFilter));
+  renderJobsPage();
+}
+
+function renderJobsPage() {
+  const list = document.getElementById('jobs-list');
+  if (!list) return;
+  const isDriver = currentUserRole === 'driver';
+
+  // Truck filter — owner only (driver list is auto-scoped to their truck).
+  const filterWrap = document.getElementById('jobs-truck-filter-wrap');
+  const filterSel  = document.getElementById('jobs-truck-filter');
+  if (filterWrap) filterWrap.hidden = isDriver;
+  if (filterSel && !isDriver) {
+    const prev = filterSel.value || 'all';
+    filterSel.innerHTML = '<option value="all">All trucks</option>' +
+      (trucks || []).map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label || 'Truck')}</option>`).join('');
+    filterSel.value = (prev === 'all' || (trucks || []).some(t => t.id === prev)) ? prev : 'all';
+  }
+
+  let rows = jobsForCurrentRole();
+  if (jobStatusFilter !== 'all') rows = rows.filter(j => (j.status || 'pending') === jobStatusFilter);
+  if (!isDriver && filterSel && filterSel.value && filterSel.value !== 'all') {
+    rows = rows.filter(j => j.truck_id === filterSel.value);
+  }
+  // Newest first (created_at desc, fall back to date).
+  rows.sort((a, b) => String(b.created_at || b.date || '').localeCompare(String(a.created_at || a.date || '')));
+
+  const sub = document.getElementById('jobs-list-sub');
+  if (sub) {
+    const scope = isDriver ? truckLabel(currentAssignedTruckId) : 'all trucks';
+    sub.textContent = `${rows.length} job${rows.length === 1 ? '' : 's'} · ${scope}`;
+  }
+
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="invoices-empty"><strong>No jobs yet.</strong><br>Tap "New job" to log one.</div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map(j => {
+    const cust = j.customer_name || jobCustomerName(j.customer_id);
+    const inv = j.invoice_id ? '<span class="job-invoice-flag">Invoiced</span>' : '';
+    return `
+      <div class="customer-card job-card" onclick="openJobDetail('${escapeHtml(j.id)}')">
+        <div class="customer-card-name">
+          <strong>${escapeHtml(j.job_number || 'JOB')}</strong>
+          <span class="meta">${escapeHtml(cust || 'No customer')} · ${escapeHtml(truckLabel(j.truck_id))}</span>
+        </div>
+        <div class="job-card-types">${jobTypeBadges(j.job_types)}</div>
+        <div class="job-card-status">${jobStatusBadge(j.status)} ${inv}</div>
+        <div class="customer-card-num">
+          <span class="label">Date</span>
+          <span class="value">${escapeHtml(j.date || '—')}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function newJobFromList() {
+  openJobEdit('');
+}
+
+function toggleJobTypeChip(el) {
+  if (el) el.classList.toggle('selected');
+}
+
+// ── Service Reports / Jobs — list, edit, detail, and invoice generation ───────
+let _currentJobEditId = null;
+let _currentJobEditItems = [];
+
+function renderJobEditItems() {
+  const container = document.getElementById('job-items-container');
+  if (!container) return;
+  if (!_currentJobEditItems || _currentJobEditItems.length === 0) {
+    container.innerHTML = `<div style="font-size:12px; color:var(--text3); padding:8px 0;">No items added yet. Click "+ Add item / service" below to itemize work or parts.</div>`;
+    updateJobItemsTotal();
+    return;
+  }
+  container.innerHTML = _currentJobEditItems.map((item, idx) => `
+    <div class="sr-item-card">
+      <div class="sr-item-card-top">
+        <input type="text" placeholder="Description of service or part (e.g. Brake pads, Oil service, Labor)" value="${escapeHtml(item.description || '')}" oninput="_currentJobEditItems[${idx}].description = this.value">
+        <button type="button" class="sr-item-del-btn" onclick="removeJobItemRow(${idx})" title="Remove item" aria-label="Remove item">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>
+      <div class="sr-item-card-nums">
+        <div>
+          <label style="font-size:11px; color:var(--text3); display:block; margin-bottom:2px;">Qty / الكمية</label>
+          <input type="number" step="0.5" min="0" value="${item.qty ?? 1}" oninput="_currentJobEditItems[${idx}].qty = parseFloat(this.value)||0; updateJobItemsTotal()">
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text3); display:block; margin-bottom:2px;">Price / سعر</label>
+          <input type="number" step="0.01" min="0" value="${item.unit_price ?? 0}" oninput="_currentJobEditItems[${idx}].unit_price = parseFloat(this.value)||0; updateJobItemsTotal()">
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text3); display:block; margin-bottom:2px;">Total / المجموع</label>
+          <div style="font-weight:700; font-size:13px; line-height:38px;" id="sr-item-sub-${idx}">
+            ${fmtMoney((item.qty || 1) * (item.unit_price || 0), 'USD')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+  updateJobItemsTotal();
+}
+
+function addJobItemRow() {
+  _currentJobEditItems.push({ description: '', qty: 1, unit_price: 0 });
+  renderJobEditItems();
+}
+
+function removeJobItemRow(idx) {
+  _currentJobEditItems.splice(idx, 1);
+  renderJobEditItems();
+}
+
+function updateJobItemsTotal() {
+  const total = (_currentJobEditItems || []).reduce((acc, it) => acc + ((Number(it.qty) || 0) * (Number(it.unit_price) || 0)), 0);
+  const totalEl = document.getElementById('job-items-total');
+  if (totalEl) totalEl.textContent = fmtMoney(total, 'USD');
+  (_currentJobEditItems || []).forEach((it, idx) => {
+    const subEl = document.getElementById(`sr-item-sub-${idx}`);
+    if (subEl) subEl.textContent = fmtMoney((Number(it.qty) || 0) * (Number(it.unit_price) || 0), 'USD');
+  });
+}
+
+function renderJobEdit(jobId) {
+  _currentJobEditId = jobId || null;
+  const job = jobId ? (jobs || []).find(j => j.id === jobId) : null;
+  const isDriver = currentUserRole === 'driver';
+
+  if (isDriver && job && job.truck_id && job.truck_id !== currentAssignedTruckId) {
+    toast('That job is on another truck', 'error');
+    openJobs();
+    return;
+  }
+  const driverNoTruck = isDriver && !currentAssignedTruckId;
+
+  const titleEl = document.getElementById('job-edit-title');
+  if (titleEl) titleEl.textContent = job ? `Edit ${job.job_number || 'report'}` : 'New service report';
+  const idEl = document.getElementById('job-id');
+  if (idEl) idEl.value = job ? job.id : '';
+
+  const dateEl = document.getElementById('job-date');
+  if (dateEl) dateEl.value = job?.date || new Date().toISOString().slice(0, 10);
+
+  const truckSel = document.getElementById('job-truck');
+  if (truckSel) {
+    truckSel.innerHTML = (trucks || []).map(t =>
+      `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label || 'Truck')}</option>`).join('')
+      || '<option value="">No trucks available</option>';
+    let selectedTruck = job?.truck_id || (isDriver ? currentAssignedTruckId : (trucks[0]?.id || ''));
+    if (isDriver && currentAssignedTruckId) selectedTruck = currentAssignedTruckId;
+    truckSel.value = selectedTruck || '';
+    truckSel.disabled = isDriver;
+  }
+  const truckHint = document.getElementById('job-truck-hint');
+  if (truckHint) {
+    truckHint.hidden = !isDriver;
+    truckHint.textContent = driverNoTruck
+      ? 'No truck assigned — ask the owner to assign one before logging jobs.'
+      : 'Locked to your assigned truck.';
+  }
+  const saveBtn = document.getElementById('job-save-btn');
+  if (saveBtn) saveBtn.disabled = driverNoTruck;
+
+  const custSel = document.getElementById('job-customer');
+  if (custSel) {
+    custSel.innerHTML = '<option value="">— Select customer —</option>' +
+      (customers || []).map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || '(unnamed)')}</option>`).join('');
+    custSel.value = job?.customer_id || '';
+  }
+
+  const selectedTypes = Array.isArray(job?.job_types) ? job.job_types : [];
+  document.querySelectorAll('#job-type-chips .job-type-chip').forEach(chip => {
+    chip.classList.toggle('selected', selectedTypes.includes(chip.dataset.type));
+  });
+
+  const statusEl = document.getElementById('job-status');
+  if (statusEl) statusEl.value = job?.status || 'pending';
+  const notesEl = document.getElementById('job-notes');
+  if (notesEl) notesEl.value = job?.notes || '';
+
+  _currentJobEditItems = Array.isArray(job?.items) ? JSON.parse(JSON.stringify(job.items)) : [];
+  renderJobEditItems();
+}
+
+async function saveJobFromForm(navigate = true) {
+  const btn = document.getElementById('job-save-btn');
+  const isDriver = currentUserRole === 'driver';
+  if (isDriver && !currentAssignedTruckId) {
+    toast('No truck assigned — ask the owner to assign one', 'error');
+    return null;
+  }
+  const truckSel = document.getElementById('job-truck');
+  const truckId = (isDriver && currentAssignedTruckId)
+    ? currentAssignedTruckId
+    : (truckSel?.value || '');
+  if (!truckId) { toast('Pick a truck first', 'error'); return null; }
+  const types = Array.from(document.querySelectorAll('#job-type-chips .job-type-chip.selected')).map(c => c.dataset.type);
+  const existing = _currentJobEditId ? (jobs || []).find(j => j.id === _currentJobEditId) : null;
+  const custId = document.getElementById('job-customer')?.value || null;
+  const cust = custId ? (customers || []).find(c => c.id === custId) : null;
+
+  const validItems = (_currentJobEditItems || []).filter(it => (it.description || '').trim() || (Number(it.unit_price) || 0) > 0);
+  const total = validItems.reduce((s, it) => s + ((Number(it.qty) || 1) * (Number(it.unit_price) || 0)), 0);
+
+  const job = {
+    id:          _currentJobEditId || undefined,
+    job_number:  existing?.job_number || '',
+    date:        document.getElementById('job-date')?.value || new Date().toISOString().slice(0, 10),
+    truck_id:    truckId,
+    customer_id: custId,
+    customer_name:           cust?.name || existing?.customer_name || '',
+    customer_address:        cust?.address || existing?.customer_address || '',
+    customer_phone:          cust?.phone || existing?.customer_phone || '',
+    customer_email:          cust?.email || existing?.customer_email || '',
+    customer_net_terms_days: cust ? (cust.net_terms_days ?? 30) : (existing?.customer_net_terms_days ?? 30),
+    job_types:   types,
+    items:       validItems,
+    total:       total,
+    status:      document.getElementById('job-status')?.value || 'pending',
+    notes:       (document.getElementById('job-notes')?.value || '').trim(),
+    invoice_id:  existing?.invoice_id || null,
+    created_by:  existing?.created_by || authDisplayName() || 'local',
+  };
+  if (!custId) {
+    job.customer_name = ''; job.customer_address = ''; job.customer_phone = '';
+    job.customer_email = ''; job.customer_net_terms_days = 30;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const saved = await saveJob(job);
+    toast('Service report saved', 'success');
+    if (navigate) openJobs();
+    return saved;
+  } catch (err) {
+    return null;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Report'; }
+  }
+}
+
+async function saveJobAndCreateInvoice() {
+  const btn = document.getElementById('job-save-invoice-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const saved = await saveJobFromForm(false);
+    if (saved && saved.id) {
+      startNewInvoiceFromJob(saved.id);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save & Generate Invoice ⚡'; }
+  }
+}
+
+function cancelJobEdit() {
+  openJobs();
+}
+
+// ── Job / Service Report detail ──────────────────────────────────────────────
+let _currentJobDetailId = null;
+
+function renderJobDetail(jobId) {
+  _currentJobDetailId = jobId || null;
+  const job = jobId ? (jobs || []).find(j => j.id === jobId) : null;
+  const fields  = document.getElementById('job-detail-fields');
+  const invBox  = document.getElementById('job-detail-invoice');
+  const titleEl = document.getElementById('job-detail-title');
+  const subEl   = document.getElementById('job-detail-sub');
+  const invBtn  = document.getElementById('job-detail-invoice-btn');
+  const editBtn = document.getElementById('job-detail-edit-btn');
+  const itemsCard = document.getElementById('job-detail-items-card');
+  const itemsList = document.getElementById('job-detail-items-list');
+  const itemsTotal = document.getElementById('job-detail-items-total');
+
+  if (!job) {
+    if (titleEl) titleEl.textContent = 'Service Report';
+    if (subEl) subEl.textContent = '';
+    if (fields) fields.innerHTML = `<div class="invoices-empty"><strong>Report not found.</strong></div>`;
+    if (invBox) invBox.innerHTML = '';
+    if (invBtn) invBtn.disabled = true;
+    if (itemsCard) itemsCard.style.display = 'none';
+    return;
+  }
+
+  if (titleEl) titleEl.textContent = job.job_number || 'Service Report';
+  if (subEl) subEl.textContent = `${job.date || ''} · ${truckLabel(job.truck_id)}`;
+
+  if (fields) {
+    fields.innerHTML = `
+      <div class="customer-stat"><span class="label">Customer</span><span class="value">${escapeHtml(job.customer_name || jobCustomerName(job.customer_id) || '—')}</span></div>
+      <div class="customer-stat"><span class="label">Truck / Unit</span><span class="value">${escapeHtml(truckLabel(job.truck_id))}</span></div>
+      <div class="customer-stat"><span class="label">Date</span><span class="value">${escapeHtml(job.date || '—')}</span></div>
+      <div class="customer-stat"><span class="label">Status</span><span class="value">${jobStatusBadge(job.status)}</span></div>
+      <div class="customer-stat job-detail-wide"><span class="label">Service category</span><span class="value">${jobTypeBadges(job.job_types)}</span></div>
+      <div class="customer-stat job-detail-wide"><span class="label">Technician notes</span><span class="value">${escapeHtml(job.notes || '—')}</span></div>
+      ${job.created_by ? `<div class="customer-stat"><span class="label">Created by</span><span class="value">${escapeHtml(job.created_by)}</span></div>` : ''}`;
+  }
+
+  if (itemsCard && itemsList) {
+    const items = Array.isArray(job.items) ? job.items : [];
+    if (items.length > 0) {
+      itemsCard.style.display = 'block';
+      const tot = items.reduce((acc, it) => acc + ((Number(it.qty) || 1) * (Number(it.unit_price) || 0)), 0);
+      itemsList.innerHTML = items.map(it => `
+        <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px;">
+          <div>
+            <strong>${escapeHtml(it.description || 'Service item')}</strong>
+            <span style="color:var(--text3); font-size:12px; margin-left:6px;">&times; ${it.qty || 1} @ ${fmtMoney(it.unit_price || 0, 'USD')}</span>
+          </div>
+          <strong>${fmtMoney((Number(it.qty) || 1) * (Number(it.unit_price) || 0), 'USD')}</strong>
+        </div>
+      `).join('');
+      if (itemsTotal) itemsTotal.textContent = `Total: ${fmtMoney(tot, 'USD')}`;
+    } else {
+      itemsCard.style.display = 'none';
+    }
+  }
+
+  // Linked invoice status.
+  if (invBox) {
+    if (job.invoice_id) {
+      const inv = (invoices || []).find(r => r.id === job.invoice_id);
+      if (inv) {
+        invBox.innerHTML = `
+          <div class="customer-stat job-detail-wide">
+            <span class="label">Linked invoice</span>
+            <span class="value"><a href="javascript:void(0)" onclick="openInvoiceFromList('${escapeHtml(inv.id)}')">${escapeHtml(inv.number || 'Invoice')}</a> · ${statusBadge(effectiveInvoiceStatus(inv))}</span>
+          </div>`;
+      } else {
+        invBox.innerHTML = `<div class="customer-stat job-detail-wide"><span class="label">Linked invoice</span><span class="value">Invoiced</span></div>`;
+      }
+    } else {
+      invBox.innerHTML = `<div class="customer-stat job-detail-wide"><span class="label">Linked invoice</span><span class="value">Not invoiced yet</span></div>`;
+    }
+  }
+
+  if (editBtn) editBtn.hidden = false;
+
+  if (invBtn) {
+    const isDriver = currentUserRole === 'driver';
+    const alreadyInvoiced = !!job.invoice_id;
+    invBtn.disabled = isDriver || alreadyInvoiced;
+    invBtn.title = isDriver
+      ? 'Requires owner or admin'
+      : (alreadyInvoiced ? 'This report already has an invoice' : 'Create an invoice pre-filled from this report');
+    invBtn.textContent = alreadyInvoiced ? 'Invoice created' : '⚡ Generate invoice from report';
+  }
+}
+
+function editJobFromDetail() {
+  if (!_currentJobDetailId) { toast('No job selected', 'error'); return; }
+  openJobEdit(_currentJobDetailId);
+}
+
+function createInvoiceFromJob() {
+  if (currentUserRole === 'driver') { toast('Requires owner or admin', 'error'); return; }
+  if (!_currentJobDetailId) { toast('No report selected', 'error'); return; }
+  const job = (jobs || []).find(j => j.id === _currentJobDetailId);
+  if (job && job.invoice_id) { toast('This report already has an invoice', 'error'); return; }
+  startNewInvoiceFromJob(_currentJobDetailId);
+}
+
+function startNewInvoiceFromJob(jobId) {
+  const job = (jobs || []).find(j => j.id === jobId);
+  if (!job) { toast('Report not found', 'error'); return; }
+  const c = (customers || []).find(x => x.id === job.customer_id);
+  const buyer = c
+    ? { name: c.name || '', address: c.address || '', phone: c.phone || '', email: c.email || '', net_terms_days: c.net_terms_days ?? 30 }
+    : (job.customer_name
+        ? { name: job.customer_name, address: job.customer_address || '', phone: job.customer_phone || '', email: job.customer_email || '', net_terms_days: job.customer_net_terms_days ?? 30 }
+        : null);
+  const seed = {
+    date:  job.date || new Date().toISOString().slice(0, 10),
+    notes: `Ref: Service Report ${job.job_number || ''}`.trim(),
+  };
+  if (buyer) seed.buyer = buyer;
+  if (Array.isArray(job.items) && job.items.length > 0) {
+    seed.items = job.items.map(it => ({
+      description: it.description || '',
+      qty: Number(it.qty) || 1,
+      unit_price: Number(it.unit_price) || 0,
+      discount_pct: 0,
+    }));
+  }
+  const d = newDraft(seed);
+  if (job.customer_id) drafts[d.local_id].customer_id = job.customer_id;
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(job.id || '');
+  if (!supabaseActive() || isUuid) drafts[d.local_id].job_id = job.id;
+  persistDraftsNow();
+  openDraft(d.local_id);
+}
+
+// ── Payment Recording Modal logic ─────────────────────────────────────────────
+let _currentPaymentInvId = null;
+
+function openPaymentModal(invId) {
+  _currentPaymentInvId = invId;
+  const inv = (invoices || []).find(r => r.id === invId);
+  if (!inv) { toast('Invoice not found', 'error'); return; }
+
+  const total = Number(inv.total) || 0;
+  const paid = Number(inv.amount_paid != null ? inv.amount_paid : (inv.status === 'paid' ? total : 0));
+  const balance = Math.max(0, total - paid);
+  const cur = inv.currency || 'USD';
+
+  const modal = document.getElementById('payment-modal');
+  const summary = document.getElementById('payment-sheet-summary');
+  const amtInput = document.getElementById('pm-amount');
+  const dateInput = document.getElementById('pm-date');
+  const noteInput = document.getElementById('pm-note');
+  const invIdInput = document.getElementById('pm-invoice-id');
+
+  if (invIdInput) invIdInput.value = invId;
+  if (amtInput) amtInput.value = balance > 0 ? balance.toFixed(2) : '';
+  if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
+  if (noteInput) noteInput.value = '';
+
+  if (summary) {
+    summary.innerHTML = `
+      <div class="pm-stat-box"><span class="label">Total</span><span class="value">${fmtMoney(total, cur)}</span></div>
+      <div class="pm-stat-box paid"><span class="label">Paid</span><span class="value">${fmtMoney(paid, cur)}</span></div>
+      <div class="pm-stat-box balance"><span class="label">Balance Due</span><span class="value">${fmtMoney(balance, cur)}</span></div>
+    `;
+  }
+
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+  }
+}
+
+function closePaymentModal() {
+  const modal = document.getElementById('payment-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function closePaymentModalOnBackdrop(e) {
+  if (e.target && e.target.id === 'payment-modal') closePaymentModal();
+}
+
+function setPaymentPreset(type) {
+  if (!_currentPaymentInvId) return;
+  const inv = (invoices || []).find(r => r.id === _currentPaymentInvId);
+  if (!inv) return;
+  const total = Number(inv.total) || 0;
+  const paid = Number(inv.amount_paid != null ? inv.amount_paid : (inv.status === 'paid' ? total : 0));
+  const balance = Math.max(0, total - paid);
+  const amtInput = document.getElementById('pm-amount');
+  if (!amtInput) return;
+  if (type === 'full') amtInput.value = balance.toFixed(2);
+  else if (type === 'half') amtInput.value = (balance / 2).toFixed(2);
+}
+
+async function submitInvoicePayment() {
+  const invId = _currentPaymentInvId;
+  if (!invId) return;
+  const inv = (invoices || []).find(r => r.id === invId);
+  if (!inv) return;
+
+  const amtInput = document.getElementById('pm-amount');
+  const dateInput = document.getElementById('pm-date');
+  const methodSel = document.getElementById('pm-method');
+  const noteInput = document.getElementById('pm-note');
+  const btn = document.getElementById('pm-submit-btn');
+
+  const amt = parseFloat(amtInput?.value || '0');
+  if (isNaN(amt) || amt <= 0) {
+    toast('Please enter a valid payment amount', 'error');
+    return;
+  }
+
+  const payload = {
+    amount: amt,
+    at: dateInput?.value ? new Date(dateInput.value + 'T12:00:00Z').toISOString() : new Date().toISOString(),
+    method: methodSel?.value || 'cash',
+    note: (noteInput?.value || '').trim(),
+  };
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  try {
+    if (!supabaseActive()) {
+      const res = await API('POST', `/api/invoices/${encodeURIComponent(invId)}/payments`, payload);
+      if (res && res.invoice) {
+        const idx = invoices.findIndex(r => r.id === invId);
+        if (idx >= 0) invoices[idx] = res.invoice;
+        _saveInvoicesLS(invoices);
+      }
+    } else {
+      const existingPayments = Array.isArray(inv.payments) ? inv.payments.slice() : [];
+      const paymentRecord = {
+        id: 'pm' + Math.random().toString(36).slice(2, 10),
+        ...payload,
+      };
+      existingPayments.push(paymentRecord);
+      const totalPaid = existingPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      const total = Number(inv.total) || 0;
+      const balance = Math.max(0, total - totalPaid);
+      let newStatus = inv.status;
+      if (totalPaid >= total && total > 0) newStatus = 'paid';
+      else if (totalPaid > 0) newStatus = 'partially_paid';
+      else newStatus = 'issued';
+
+      const updateData = {
+        payments: existingPayments,
+        amount_paid: totalPaid,
+        balance_due: balance,
+        status: newStatus,
+        paid_at: newStatus === 'paid' ? payload.at : inv.paid_at,
+      };
+      await patchInvoice(invId, updateData);
+    }
+
+    closePaymentModal();
+    rerenderActiveInvoiceView();
+    toast(`Payment of ${fmtMoney(amt, inv.currency)} saved`, 'success');
+  } catch (err) {
+    toast(`Failed to record payment: ${err.message || err}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Payment'; }
+  }
+}
+
+// ── Quick Customer Add logic ──────────────────────────────────────────────────
+function openQuickCustomerModal() {
+  const modal = document.getElementById('quick-customer-modal');
+  ['qc-name', 'qc-phone', 'qc-email', 'qc-addr'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+  }
+}
+
+function closeQuickCustomerModal() {
+  const modal = document.getElementById('quick-customer-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function closeQuickCustomerModalOnBackdrop(e) {
+  if (e.target && e.target.id === 'quick-customer-modal') closeQuickCustomerModal();
+}
+
+async function saveQuickCustomer() {
+  const nameInput = document.getElementById('qc-name');
+  const name = (nameInput?.value || '').trim();
+  if (!name) { toast('Please enter a customer name', 'error'); return; }
+
+  const custData = {
+    name,
+    phone: (document.getElementById('qc-phone')?.value || '').trim(),
+    email: (document.getElementById('qc-email')?.value || '').trim(),
+    address: (document.getElementById('qc-addr')?.value || '').trim(),
+    net_terms_days: 30,
+  };
+
+  try {
+    let saved = null;
+    if (supabaseActive()) {
+      const { data, error } = await supabaseClient.from('customers').insert(custData).select('*').single();
+      if (error) throw error;
+      saved = data;
+    } else {
+      const res = await API('POST', '/api/customers', custData);
+      saved = { ...custData, id: res.id || ('c' + Date.now()) };
+    }
+    customers.push(saved);
+    _saveCustomersLS(customers);
+
+    const jobCustSel = document.getElementById('job-customer');
+    if (jobCustSel) {
+      const opt = document.createElement('option');
+      opt.value = saved.id;
+      opt.textContent = saved.name;
+      jobCustSel.appendChild(opt);
+      jobCustSel.value = saved.id;
+    }
+    closeQuickCustomerModal();
+    toast(`Added ${name} to CRM`, 'success');
+  } catch (err) {
+    toast(`Failed to save customer: ${err.message || err}`, 'error');
+  }
+}
+
+// ── Driver profile ───────────────────────────────────────────────────────────
+function renderProfilePage() {
+  const body = document.getElementById('profile-page-body');
+  if (!body) return;
+  const name = supabaseActive() ? (authDisplayName() || 'You') : 'Local user';
+  const roleLabel = currentUserRole === 'driver' ? 'Driver' : 'Owner';
+  const today = new Date().toISOString().slice(0, 10);
+  const todays = jobsForCurrentRole().filter(j => j.date === today).length;
+  body.innerHTML = `
+    <div class="customer-stats">
+      <div class="customer-stat"><span class="label">Signed in as</span><span class="value">${escapeHtml(name)}</span></div>
+      <div class="customer-stat"><span class="label">Role</span><span class="value"><span class="role-badge role-badge-${escapeHtml(currentUserRole)}">${escapeHtml(roleLabel)}</span></span></div>
+      ${currentUserRole === 'driver' ? `<div class="customer-stat"><span class="label">Assigned truck</span><span class="value">${escapeHtml(truckLabel(currentAssignedTruckId))}</span></div>` : ''}
+      <div class="customer-stat"><span class="label">Jobs today</span><span class="value">${todays}</span></div>
+    </div>
+    <div class="profile-actions">
+      <button class="primary-btn" type="button" onclick="openJobs()">View jobs</button>
+      ${supabaseActive() ? '<button class="secondary-btn" type="button" onclick="signOutSupabase()">Sign out</button>' : ''}
+    </div>`;
+}
 

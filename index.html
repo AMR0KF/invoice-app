@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -17,15 +17,23 @@
   </div>
   <nav class="topbar-nav" aria-label="Main navigation">
     <button class="nav-link" data-route="home"      type="button" onclick="openHome()">Home</button>
+    <button class="nav-link" data-route="jobs"      type="button" onclick="openJobs()">Service Reports</button>
     <button class="nav-link" data-route="drafts"    type="button" onclick="openDrafts()">Drafts</button>
     <button class="nav-link" data-route="invoices"  type="button" onclick="openInvoices()">Invoices</button>
-    <button class="nav-link" data-route="customers" type="button" onclick="openCustomers()">Customers</button>
+    <button class="nav-link" data-route="customers" type="button" onclick="openCustomers()">CRM / Clients</button>
     <button class="nav-link" data-route="companies" type="button" onclick="openCompanies()">Companies</button>
     <button class="nav-link" data-route="financial" type="button" onclick="openFinancial()">Financial</button>
     <button class="nav-link" data-route="settings"  type="button" onclick="openSettings()">Settings</button>
+    <button class="nav-link" data-route="profile"   type="button" onclick="openProfile()" hidden>Profile</button>
   </nav>
   <div class="topbar-spacer"></div>
   <div class="topbar-actions">
+    <!-- Company Summoner Pill (Top Right) -->
+    <button class="company-summon-btn" id="company-summon-btn" type="button" onclick="openCompanyModal()" title="Active Issuing Company">
+      <span class="comp-icon">🏢</span>
+      <span class="comp-name" id="topbar-company-label">Individual</span>
+      <span class="comp-caret">▾</span>
+    </button>
     <button class="auth-pill" id="supabase-auth-btn" type="button" onclick="openAuthModal()">Local data</button>
     <button class="auth-signout" id="supabase-signout-btn" type="button" onclick="signOutSupabase()" aria-label="Sign out" title="Sign out" style="display:none">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -91,12 +99,14 @@
 <!-- Mobile slide-down nav drawer. Hidden on desktop via CSS. -->
 <nav class="mobile-nav-drawer" id="mobile-nav-drawer" hidden aria-label="Mobile navigation">
   <button class="mobile-nav-item" type="button" data-route="home"      onclick="openHome(); closeMobileNav()">Home</button>
+  <button class="mobile-nav-item" type="button" data-route="jobs"      onclick="openJobs(); closeMobileNav()">Service Reports</button>
   <button class="mobile-nav-item" type="button" data-route="drafts"    onclick="openDrafts(); closeMobileNav()">Drafts</button>
   <button class="mobile-nav-item" type="button" data-route="invoices"  onclick="openInvoices(); closeMobileNav()">Invoices</button>
-  <button class="mobile-nav-item" type="button" data-route="customers" onclick="openCustomers(); closeMobileNav()">Customers</button>
+  <button class="mobile-nav-item" type="button" data-route="customers" onclick="openCustomers(); closeMobileNav()">CRM / Clients</button>
   <button class="mobile-nav-item" type="button" data-route="companies" onclick="openCompanies(); closeMobileNav()">Companies</button>
   <button class="mobile-nav-item" type="button" data-route="financial" onclick="openFinancial(); closeMobileNav()">Financial</button>
   <button class="mobile-nav-item" type="button" data-route="settings"  onclick="openSettings(); closeMobileNav()">Settings</button>
+  <button class="mobile-nav-item" type="button" data-route="profile"   onclick="openProfile(); closeMobileNav()" hidden>Profile</button>
 </nav>
 
 <section id="view-invoice" hidden>
@@ -105,6 +115,16 @@
   <!-- ── LANGUAGE + META ────────────────────────────────────────────── -->
   <div class="card meta-card">
     <div class="card-title">INVOICE DETAILS / إعدادات الفاتورة</div>
+
+    <div class="meta-issuer-strip">
+      <div class="meta-issuer-left">
+        <span class="meta-issuer-muted">Issuing from:</span>
+        <strong id="meta-issuer-name" class="meta-issuer-val">Individual</strong>
+      </div>
+      <button type="button" class="meta-issuer-switch-btn" onclick="openCompanyModal()">
+        Change ▾
+      </button>
+    </div>
 
     <div class="g3">
       <div class="field">
@@ -181,7 +201,7 @@
   </div>
 
   <!-- ── BUYER / CLIENT ────────────────────────────────────────────── -->
-  <div class="card">
+  <div class="card buyer-card" id="buyer-card">
     <div class="card-title">BUYER / CLIENT</div>
 
     <div class="field" style="margin-bottom:12px">
@@ -210,13 +230,15 @@
         <input id="b-phone" placeholder="">
       </div>
     </div>
-    <div class="field" style="margin-top:10px">
-      <div class="bilabel"><span>Email <small style="color:var(--text3)">(opt.)</small></span><span class="ar">البريد الإلكتروني</span></div>
-      <input id="b-email" type="email" placeholder="">
-    </div>
-    <div class="field" style="margin-top:10px">
-      <div class="bilabel"><span>Payment terms (days) <small style="color:var(--text3)">net-N</small></span><span class="ar">مهلة السداد</span></div>
-      <input id="b-net-terms" type="number" min="0" step="1" value="30" placeholder="30">
+    <div class="g2" style="margin-top:10px">
+      <div class="field">
+        <div class="bilabel"><span>Email <small style="color:var(--text3)">(opt.)</small></span><span class="ar">البريد الإلكتروني</span></div>
+        <input id="b-email" type="email" placeholder="">
+      </div>
+      <div class="field">
+        <div class="bilabel"><span>Payment terms (days) <small style="color:var(--text3)">net-N</small></span><span class="ar">مهلة السداد</span></div>
+        <input id="b-net-terms" type="number" min="0" step="1" value="30" placeholder="30">
+      </div>
     </div>
     <div style="margin-top:8px; font-size:11.5px; color:var(--text3); text-align:right">
       <a href="#" id="b-history-link" onclick="event.preventDefault(); goToCustomerForCurrentBuyer()">View invoice history →</a>
@@ -224,7 +246,7 @@
   </div>
 
   <!-- ── LINE ITEMS ────────────────────────────────────────────────── -->
-  <div class="card">
+  <div class="card items-card" id="items-card">
     <div class="card-title">LINE ITEMS / البنود</div>
 
     <div class="opt-row" style="margin-bottom:10px">
@@ -299,29 +321,40 @@
     </div>
   </div>
 
-  <!-- ── NOTES ─────────────────────────────────────────────────────── -->
-  <div class="card">
-    <div class="card-title">NOTES / ملاحظات</div>
-    <div class="mobile-design-field">
-      <div class="bilabel"><span>Invoice design</span><span class="ar">تصميم الفاتورة</span></div>
-      <select id="mobile-template" onchange="setTemplateFromMobileNotes()">
-        <option value="aurora">Aurora</option>
-        <option value="aurora_v2">Aurora v2</option>
-        <option value="meridian">Meridian</option>
-        <option value="meridian_v2">Meridian v2</option>
-        <option value="obsidian">Obsidian</option>
-        <option value="classic">Classic</option>
-      </select>
+  <!-- ── NOTES (Collapsible on click) ──────────────────────────────── -->
+  <div class="card notes-card collapsed" id="notes-card">
+    <div class="notes-card-toggle" onclick="toggleNotesCard()">
+      <div class="notes-toggle-left">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="notes-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span class="notes-title-text">NOTES &amp; PAYMENT INSTRUCTIONS / ملاحظات إضافية</span>
+      </div>
+      <div class="notes-toggle-right">
+        <span class="notes-badge" id="notes-badge" style="display:none">● Has notes</span>
+        <span class="notes-action-pill" id="notes-action-pill">+ Expand</span>
+      </div>
     </div>
-    <div class="field">
-      <div class="bilabel"><span>Additional notes</span><span class="ar">ملاحظات إضافية</span></div>
-      <textarea id="notes" placeholder="Payment terms, bank details…"></textarea>
-    </div>
-    <div class="notes-fixed">
-      <span class="thanks-stack">
-        <span>Always included: <strong>Thank you for your business!</strong></span>
-        <strong class="ar">شكراً لتعاملكم معنا</strong>
-      </span>
+    <div class="notes-collapsible-body" id="notes-body" style="display:none">
+      <div class="mobile-design-field">
+        <div class="bilabel"><span>Invoice design</span><span class="ar">تصميم الفاتورة</span></div>
+        <select id="mobile-template" onchange="setTemplateFromMobileNotes()">
+          <option value="aurora">Aurora</option>
+          <option value="aurora_v2">Aurora v2</option>
+          <option value="meridian">Meridian</option>
+          <option value="meridian_v2">Meridian v2</option>
+          <option value="obsidian">Obsidian</option>
+          <option value="classic">Classic</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="bilabel"><span>Additional notes</span><span class="ar">ملاحظات إضافية</span></div>
+        <textarea id="notes" placeholder="Payment terms, bank details…" oninput="updateNotesBadge()"></textarea>
+      </div>
+      <div class="notes-fixed">
+        <span class="thanks-stack">
+          <span>Always included: <strong>Thank you for your business!</strong></span>
+          <strong class="ar">شكراً لتعاملكم معنا</strong>
+        </span>
+      </div>
     </div>
   </div>
 
@@ -446,12 +479,28 @@
 </div>
 
 <div class="mobile-action-bar" aria-label="Mobile invoice actions">
-  <div class="mobile-bar-meta">
+  <div class="mobile-bar-meta" id="mobile-bar-meta">
     <strong id="mobile-total">USD 0.00</strong>
     <span id="mobile-pdf-status">Draft</span>
   </div>
   <div class="mobile-actions">
     <button class="mobile-action-btn primary" id="mobile-issue-btn" type="button" onclick="issueDraft()">Save &amp; Print</button>
+  </div>
+</div>
+
+<!-- Mobile Invoice Actions Sheet Modal -->
+<div class="modal-backdrop action-sheet-backdrop" id="mobile-invoice-actions-sheet" hidden onclick="if(event.target===this)closeMobileInvoiceActionSheet()">
+  <div class="action-sheet-dialog">
+    <div class="action-sheet-drag-handle"></div>
+    <div class="action-sheet-head">
+      <div class="action-sheet-title" id="action-sheet-title">Invoice Actions</div>
+      <button class="icon-btn" type="button" onclick="closeMobileInvoiceActionSheet()" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:18px;height:18px">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="action-sheet-body" id="action-sheet-body"></div>
   </div>
 </div>
 </section>
@@ -481,12 +530,13 @@
 
     <div class="invoices-toolbar">
       <div class="invoices-chips" id="invoices-chips" role="tablist">
-        <button class="chip active" data-status="all"     onclick="setInvoiceFilter('all')">All</button>
-        <button class="chip"        data-status="draft"   onclick="setInvoiceFilter('draft')">Draft</button>
-        <button class="chip"        data-status="issued"  onclick="setInvoiceFilter('issued')">Issued</button>
-        <button class="chip"        data-status="overdue" onclick="setInvoiceFilter('overdue')">Overdue</button>
-        <button class="chip"        data-status="paid"    onclick="setInvoiceFilter('paid')">Paid</button>
-        <button class="chip"        data-status="void"    onclick="setInvoiceFilter('void')">Void</button>
+        <button class="chip active" data-status="all"            onclick="setInvoiceFilter('all')">All</button>
+        <button class="chip"        data-status="draft"          onclick="setInvoiceFilter('draft')">Draft</button>
+        <button class="chip"        data-status="issued"         onclick="setInvoiceFilter('issued')">Unpaid</button>
+        <button class="chip"        data-status="partially_paid" onclick="setInvoiceFilter('partially_paid')">Partially paid</button>
+        <button class="chip"        data-status="paid"           onclick="setInvoiceFilter('paid')">Paid</button>
+        <button class="chip"        data-status="overdue"        onclick="setInvoiceFilter('overdue')">Overdue</button>
+        <button class="chip"        data-status="void"           onclick="setInvoiceFilter('void')">Void</button>
       </div>
       <div class="invoices-search-wrap">
         <svg class="invoices-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
@@ -527,26 +577,34 @@
   </div>
 </section>
 
-<!-- Customer detail view -->
+<!-- Customer detail view (CRM) -->
 <section id="view-customer" hidden>
   <div class="customer-page">
     <header class="invoices-page-head">
-      <button class="settings-back" type="button" onclick="openCustomers()" aria-label="Back to customers">
+      <button class="settings-back" type="button" onclick="openCustomers()" aria-label="Back to CRM">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span>Customers</span>
+        <span>CRM</span>
       </button>
       <div class="invoices-page-title">
         <h1 id="customer-detail-name">Customer</h1>
         <p id="customer-detail-meta"></p>
       </div>
       <div class="invoices-page-actions">
+        <button class="secondary-btn" type="button" id="customer-detail-sr-btn" onclick="newJobForCurrentCustomer()">+ Service report</button>
         <button class="primary-btn" type="button" id="customer-detail-new-btn" onclick="newInvoiceForCurrentCustomer()">+ New invoice</button>
       </div>
     </header>
     <div class="customer-stats" id="customer-stats"></div>
+    <div class="invoices-chips" id="crm-tabs" role="tablist" style="margin-bottom:14px;">
+      <button class="chip active" data-tab="invoices" onclick="setCustomerTab('invoices')">Invoices</button>
+      <button class="chip" data-tab="reports" onclick="setCustomerTab('reports')">Service Reports</button>
+      <button class="chip" data-tab="payments" onclick="setCustomerTab('payments')">Payment History</button>
+    </div>
     <div class="invoices-list" id="customer-invoices-list"></div>
+    <div class="customers-list" id="customer-reports-list" style="display:none"></div>
+    <div class="customers-list" id="customer-payments-list" style="display:none"></div>
   </div>
 </section>
 
@@ -669,6 +727,174 @@
 <!-- Financial dashboard -->
 <section id="view-financial" hidden>
   <div class="financial-page" id="financial-page-body"></div>
+</section>
+
+<!-- Service Reports list page -->
+<section id="view-jobs" hidden>
+  <div class="invoices-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="openHome()" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Home</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1>Service Reports / تقارير الخدمة</h1>
+        <p id="jobs-list-sub">Log field work, parts &amp; labor, then generate invoices in 1 tap.</p>
+      </div>
+      <div class="invoices-page-actions">
+        <button class="primary-btn" type="button" onclick="newJobFromList()">+ New report</button>
+      </div>
+    </header>
+    <div class="invoices-toolbar">
+      <div class="invoices-sort" id="jobs-truck-filter-wrap">
+        <label class="invoices-sort-label" for="jobs-truck-filter">Unit / Truck</label>
+        <select id="jobs-truck-filter" onchange="renderJobsPage()">
+          <option value="all">All units</option>
+        </select>
+      </div>
+      <div class="invoices-chips" id="jobs-status-chips" role="tablist">
+        <button class="chip active" data-status="all"     onclick="setJobFilter('all')">All</button>
+        <button class="chip"        data-status="pending" onclick="setJobFilter('pending')">Pending</button>
+        <button class="chip"        data-status="done"    onclick="setJobFilter('done')">Completed</button>
+      </div>
+    </div>
+    <div class="customers-list" id="jobs-list" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- New / edit service report page -->
+<section id="view-job-edit" hidden>
+  <div class="settings-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="cancelJobEdit()" aria-label="Back to reports">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Reports</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1 id="job-edit-title">New service report</h1>
+        <p id="job-edit-sub">Log work performed, items, and technician notes.</p>
+      </div>
+    </header>
+
+    <div class="settings-card job-form">
+      <input type="hidden" id="job-id">
+      <div class="field">
+        <div class="bilabel"><span>Date</span><span class="ar">التاريخ</span></div>
+        <input type="date" id="job-date">
+      </div>
+      <div class="field">
+        <div class="bilabel"><span>Truck / Unit</span><span class="ar">الشاحنة أو الوحدة</span></div>
+        <select id="job-truck"></select>
+        <small class="job-field-hint" id="job-truck-hint" hidden>Locked to your assigned truck.</small>
+      </div>
+      <div class="field">
+        <div class="bilabel">
+          <span>Customer</span>
+          <span class="ar">العميل</span>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <select id="job-customer" style="flex:1"><option value="">— Select customer —</option></select>
+          <button type="button" class="secondary-btn" style="padding:0 12px; height:42px; white-space:nowrap;" onclick="openQuickCustomerModal()">+ New</button>
+        </div>
+      </div>
+      <div class="field">
+        <div class="bilabel"><span>Service category</span><span class="ar">نوع الخدمة</span></div>
+        <div class="job-type-chips" id="job-type-chips">
+          <button type="button" class="chip job-type-chip" data-type="transport" onclick="toggleJobTypeChip(this)">Transport</button>
+          <button type="button" class="chip job-type-chip" data-type="labor"     onclick="toggleJobTypeChip(this)">Labor</button>
+          <button type="button" class="chip job-type-chip" data-type="items"     onclick="toggleJobTypeChip(this)">Items / Parts</button>
+        </div>
+      </div>
+
+      <!-- Itemized Services / Work Performed -->
+      <div class="field" style="margin-top:14px;">
+        <div class="bilabel">
+          <span>Work Performed &amp; Items / الأعمال والقطع</span>
+          <span class="ar">البنود والخدمات</span>
+        </div>
+        <div id="job-items-container" class="sr-items-list" style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
+          <!-- Dynamically populated item cards -->
+        </div>
+        <button type="button" class="add-row-btn" style="margin-top:8px;" onclick="addJobItemRow()">+ Add item / service</button>
+        <div class="totals" style="margin-top:12px; padding:10px; background:var(--surface2); border-radius:8px;">
+          <div class="total-row" style="margin:0; font-size:14px;">
+            <span class="lbl">Report total / المجموع التقديري:</span>
+            <strong class="amt" id="job-items-total" style="color:var(--accent2)">USD 0.00</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="bilabel"><span>Status</span><span class="ar">الحالة</span></div>
+        <select id="job-status">
+          <option value="pending">Pending / قيد التنفيذ</option>
+          <option value="done">Completed / منجز</option>
+          <option value="cancelled">Cancelled / ملغي</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="bilabel"><span>Technician notes / remarks</span><span class="ar">ملاحظات الفني</span></div>
+        <textarea id="job-notes" rows="3" placeholder="Summary of work performed, parts used, client remarks…"></textarea>
+      </div>
+      <div class="job-form-actions" style="display:flex; flex-wrap:wrap; gap:10px;">
+        <button class="secondary-btn" type="button" onclick="cancelJobEdit()">Cancel</button>
+        <button class="secondary-btn" type="button" id="job-save-btn" onclick="saveJobFromForm()">Save Report</button>
+        <button class="primary-btn" type="button" id="job-save-invoice-btn" onclick="saveJobAndCreateInvoice()">Save &amp; Generate Invoice ⚡</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Job detail page -->
+<section id="view-job-detail" hidden>
+  <div class="customer-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="openJobs()" aria-label="Back to reports">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Reports</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1 id="job-detail-title">Service Report</h1>
+        <p id="job-detail-sub"></p>
+      </div>
+      <div class="invoices-page-actions">
+        <button class="ghost-btn" type="button" id="job-detail-edit-btn" onclick="editJobFromDetail()">Edit</button>
+        <button class="primary-btn" type="button" id="job-detail-invoice-btn" onclick="createInvoiceFromJob()">⚡ Generate invoice</button>
+      </div>
+    </header>
+    <div class="customer-stats" id="job-detail-fields"></div>
+    <div class="settings-card" id="job-detail-items-card" style="margin-top:16px; display:none;">
+      <h3 style="font-size:14px; margin-bottom:10px; color:var(--text2)">WORK PERFORMED &amp; ITEMS</h3>
+      <div id="job-detail-items-list"></div>
+      <div style="text-align:right; margin-top:12px; font-weight:700; font-size:15px;" id="job-detail-items-total"></div>
+    </div>
+    <div class="customer-stats" id="job-detail-invoice" style="margin-top:16px;"></div>
+  </div>
+</section>
+
+<!-- Driver profile page -->
+<section id="view-profile" hidden>
+  <div class="customer-page">
+    <header class="invoices-page-head">
+      <button class="settings-back" type="button" onclick="openHome()" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Home</span>
+      </button>
+      <div class="invoices-page-title">
+        <h1>Profile</h1>
+        <p>Your account and assigned truck.</p>
+      </div>
+    </header>
+    <div class="profile-page-body" id="profile-page-body"></div>
+  </div>
 </section>
 
 <!-- Settings (full page view) -->
@@ -831,6 +1057,142 @@
 
   </div>
 </section>
+
+<!-- Company Switcher Modal (Summoned from Top Right) -->
+<div class="modal-backdrop" id="company-modal" onclick="closeCompanyModalOnBackdrop(event)" aria-hidden="true" style="display:none">
+  <div class="company-popover-shell" role="dialog" aria-modal="true" aria-labelledby="company-modal-title">
+    <div class="company-popover-head">
+      <div class="company-popover-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px; color:var(--accent2);"><path d="M3 21h18M5 21V7l8-4v18M13 21V3l6 4v14"/></svg>
+        <span id="company-modal-title">Issuing Company / الشركة المصدرة</span>
+      </div>
+      <button class="icon-btn" type="button" onclick="closeCompanyModal()" aria-label="Close" title="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="company-popover-body">
+      <div class="field" style="margin-bottom:12px">
+        <div class="bilabel"><span>Select Issuing Company</span><span class="ar">اختر الشركة المصدرة</span></div>
+        <select id="doc-company-select" class="input-square" onchange="onDocCompanySelectChange()" style="font-size:13px; font-weight:600; width:100%; padding:8px 10px;">
+          <option value="">Individual / no company (فرد بدون شركة)</option>
+        </select>
+      </div>
+      <div class="company-preview-card" id="company-preview-card" style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:14px;">
+        <div style="font-weight:700; font-size:14px; color:var(--text);" id="summon-comp-name">Individual / No company</div>
+        <div style="font-size:12px; color:var(--text2); margin-top:4px;" id="summon-comp-addr">No address configured</div>
+        <div style="font-size:12px; color:var(--text2); margin-top:2px;" id="summon-comp-contact">Phone: — | Email: —</div>
+      </div>
+      <div class="company-popover-actions" style="display:flex; justify-content:space-between; align-items:center;">
+        <button class="secondary-btn" type="button" onclick="openCompanies(); closeCompanyModal();" style="font-size:12px;">Manage Profiles →</button>
+        <button class="primary-btn" type="button" onclick="closeCompanyModal()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Payment Recording Modal (Mobile Bottom Sheet / Dialog) -->
+<div class="modal-backdrop" id="payment-modal" onclick="closePaymentModalOnBackdrop(event)" aria-hidden="true" style="display:none">
+  <div class="payment-sheet" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
+    <div class="payment-sheet-head">
+      <div>
+        <h2 id="payment-modal-title" style="margin:0; font-size:18px;">Record payment / تسجيل دفعة</h2>
+        <p id="payment-modal-sub" style="margin:2px 0 0; font-size:12px; color:var(--text3)">Log a payment received for this invoice.</p>
+      </div>
+      <button class="icon-btn" type="button" onclick="closePaymentModal()" aria-label="Close" title="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="payment-sheet-summary" id="payment-sheet-summary" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin:14px 0; background:var(--surface2); padding:10px 12px; border-radius:10px;">
+      <!-- Populated dynamically -->
+    </div>
+    <div class="payment-form">
+      <input type="hidden" id="pm-invoice-id">
+      <div class="field" style="margin-bottom:12px">
+        <div class="bilabel"><span>Payment Amount</span><span class="ar">المبلغ المدفوع</span></div>
+        <input type="number" id="pm-amount" step="0.01" min="0.01" placeholder="0.00" inputmode="decimal" style="font-size:18px; font-weight:700;">
+        <div class="pm-presets" style="display:flex; gap:8px; margin-top:8px;">
+          <button type="button" class="chip" style="font-size:12px; padding:4px 10px;" onclick="setPaymentPreset('full')">Pay full balance</button>
+          <button type="button" class="chip" style="font-size:12px; padding:4px 10px;" onclick="setPaymentPreset('half')">50% deposit</button>
+        </div>
+      </div>
+      <div class="g2" style="margin-bottom:12px">
+        <div class="field">
+          <div class="bilabel"><span>Date</span><span class="ar">التاريخ</span></div>
+          <input type="date" id="pm-date">
+        </div>
+        <div class="field">
+          <div class="bilabel"><span>Method</span><span class="ar">طريقة الدفع</span></div>
+          <select id="pm-method">
+            <option value="cash">Cash / نقداً</option>
+            <option value="bank_transfer">Bank Transfer / تحويل بنكي</option>
+            <option value="card">Card / بطاقة</option>
+            <option value="check">Check / شيك</option>
+            <option value="whish">Whish / ويش</option>
+            <option value="other">Other / أخرى</option>
+          </select>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <div class="bilabel"><span>Note / Receipt # <small style="color:var(--text3)">(optional)</small></span><span class="ar">ملاحظة أو إيصال</span></div>
+        <input type="text" id="pm-note" placeholder="e.g. Receipt #1044, check #8821">
+      </div>
+      <div class="payment-actions" style="display:flex; gap:10px; justify-content:flex-end;">
+        <button class="secondary-btn" type="button" onclick="closePaymentModal()">Cancel</button>
+        <button class="primary-btn" type="button" id="pm-submit-btn" onclick="submitInvoicePayment()">Save Payment</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Add Customer Modal -->
+<div class="modal-backdrop" id="quick-customer-modal" onclick="closeQuickCustomerModalOnBackdrop(event)" aria-hidden="true" style="display:none">
+  <div class="auth-shell" style="max-width:440px; margin:auto;">
+    <div class="auth-dialog" role="dialog" aria-modal="true" style="width:100%">
+      <h2 style="font-size:18px; margin-bottom:4px;">+ Quick Add Customer</h2>
+      <p style="font-size:12px; color:var(--text3); margin-bottom:14px;">Adds client directly to CRM and selects them.</p>
+      <div class="field" style="margin-bottom:10px">
+        <div class="bilabel"><span>Customer / Client Name *</span><span class="ar">اسم العميل</span></div>
+        <input id="qc-name" placeholder="Business or person name">
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <div class="bilabel"><span>Phone</span><span class="ar">الهاتف</span></div>
+        <input id="qc-phone" placeholder="+961 ...">
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <div class="bilabel"><span>Email</span><span class="ar">البريد الإلكتروني</span></div>
+        <input id="qc-email" type="email" placeholder="client@example.com">
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <div class="bilabel"><span>Address</span><span class="ar">العنوان</span></div>
+        <input id="qc-addr" placeholder="Street, city">
+      </div>
+      <div class="auth-actions" style="display:flex; gap:10px; justify-content:flex-end;">
+        <button class="secondary-btn" type="button" onclick="closeQuickCustomerModal()">Cancel</button>
+        <button class="primary-btn" type="button" onclick="saveQuickCustomer()">Save to CRM</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile Bottom Navigation Bar (Thumb Zone) -->
+<nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile Bottom Navigation">
+  <button class="mobile-nav-btn active" data-nav="home" type="button" onclick="openHome()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    <span>Home</span>
+  </button>
+  <button class="mobile-nav-btn" data-nav="jobs" type="button" onclick="openJobs()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    <span>Reports</span>
+  </button>
+  <button class="mobile-nav-btn" data-nav="invoices" type="button" onclick="openInvoices()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
+    <span>Invoices</span>
+  </button>
+  <button class="mobile-nav-btn" data-nav="customers" type="button" onclick="openCustomers()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <span>CRM</span>
+  </button>
+</nav>
 
 <script src="/app.js"></script>
 </body>

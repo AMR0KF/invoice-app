@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>شهادة تفوق</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500;700;800;900&family=Lalezar&display=swap" rel="stylesheet">
+<style>
+/* Local fallback fonts (resolve relative to this file → ./fonts/). Guarantees
+   correct Arabic shaping even with no network for the Google Fonts above. */
+@font-face{font-family:"NotoNaskh";src:url("fonts/NotoNaskhArabic-Bold.ttf") format("truetype");font-weight:700;font-display:block;}
+@font-face{font-family:"NotoNaskh";src:url("fonts/NotoNaskhArabic-Regular.ttf") format("truetype");font-weight:400;font-display:block;}
+
+:root{
+  --cream:#f8f3e5;
+  --cream-2:#f2ead4;
+  --green-deep:#0c4f2c;
+  --green:#11643a;
+  --green-mid:#1c7e48;
+  --green-bright:#2ea05d;
+  --gold:#d6a82c;
+  --gold-light:#f1d27a;
+  --gold-deep:#b6851a;
+  --ink:#114a2d;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:#dad3c0;
+  font-family:"Tajawal","Cairo","NotoNaskh","Segoe UI",Tahoma,sans-serif;
+  display:flex;justify-content:center;align-items:center;
+  padding:30px;
+}
+
+.certificate{
+  position:relative;
+  width:1240px;height:672px;
+  background:
+    radial-gradient(circle at 50% 38%, #fcf8ee 0%, var(--cream) 55%, var(--cream-2) 100%);
+  overflow:hidden;
+  box-shadow:0 30px 70px rgba(0,0,0,.35);
+}
+
+/* subtle geometric tile pattern */
+.certificate::before{
+  content:"";position:absolute;inset:0;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(17,100,58,.035) 0 2px, transparent 2px 26px),
+    repeating-linear-gradient(-45deg, rgba(17,100,58,.035) 0 2px, transparent 2px 26px);
+  pointer-events:none;
+}
+
+/* ornate double frame */
+.frame{position:absolute;inset:16px;border:7px solid var(--green-deep);border-radius:6px;}
+.frame::after{content:"";position:absolute;inset:7px;border:2px solid var(--gold);border-radius:3px;}
+.frame-inner{position:absolute;inset:26px;border:1.5px solid rgba(182,133,26,.55);border-radius:3px;}
+
+/* gold corner flourishes */
+.corner{position:absolute;font-size:42px;color:var(--gold);line-height:1;z-index:6;text-shadow:0 1px 0 var(--gold-deep);}
+.corner.tl{top:30px;right:34px;}
+.corner.tr{top:30px;left:34px;transform:scaleX(-1);}
+.corner.bl{bottom:30px;right:34px;transform:scaleY(-1);}
+.corner.br{bottom:30px;left:34px;transform:scale(-1,-1);}
+
+/* faint scattered math symbols */
+.bg-sym{position:absolute;font-weight:900;opacity:.13;font-family:"Cairo",sans-serif;z-index:1;}
+
+.content{position:absolute;inset:40px;z-index:5;display:flex;flex-direction:column;align-items:center;text-align:center;}
+
+.trophy{font-size:74px;line-height:1;margin-top:6px;filter:drop-shadow(0 6px 8px rgba(0,0,0,.18));}
+
+.title{
+  font-family:"Lalezar","Cairo","NotoNaskh",sans-serif;
+  font-weight:400;
+  font-size:74px;line-height:1.05;
+  color:var(--green);
+  margin-top:2px;
+  letter-spacing:1px;
+  text-shadow:0 2px 0 rgba(255,255,255,.5), 0 4px 6px rgba(12,79,44,.18);
+}
+
+/* ribbon banner */
+.ribbon{
+  position:relative;margin-top:14px;
+  background:linear-gradient(180deg,var(--green-mid),var(--green-deep));
+  color:#fff;font-family:"Cairo",sans-serif;font-weight:700;font-size:24px;
+  padding:9px 46px;border-radius:4px;
+  box-shadow:0 4px 10px rgba(12,79,44,.3);
+  border:1px solid var(--gold);
+}
+.ribbon::before,.ribbon::after{
+  content:"";position:absolute;top:50%;width:26px;height:46px;
+  background:var(--green-deep);transform:translateY(-50%);
+  z-index:-1;
+}
+.ribbon::before{right:-22px;clip-path:polygon(0 0,100% 22%,55% 50%,100% 78%,0 100%);}
+.ribbon::after{left:-22px;clip-path:polygon(100% 0,0 22%,45% 50%,0 78%,100% 100%);}
+
+.awarded{margin-top:30px;font-family:"Cairo",sans-serif;font-size:21px;color:var(--ink);font-weight:600;}
+
+.name{
+  margin-top:12px;
+  font-family:"Cairo","NotoNaskh",sans-serif;font-weight:900;
+  font-size:52px;color:var(--green-deep);line-height:1.1;
+  text-shadow:0 2px 0 rgba(255,255,255,.55);
+}
+.name-rule{width:300px;height:3px;margin-top:8px;border-radius:3px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);}
+
+.body{
+  margin-top:18px;max-width:660px;
+  font-family:"Tajawal","Cairo",sans-serif;font-weight:500;font-size:19px;line-height:1.95;
+  color:var(--green);
+}
+
+/* right-side champion rosette */
+.badge{position:absolute;top:120px;right:78px;z-index:6;width:148px;height:148px;
+  display:flex;align-items:center;justify-content:center;}
+.rosette{
+  position:absolute;inset:0;border-radius:50%;
+  background:
+    radial-gradient(circle, var(--gold-light) 0 40%, var(--gold) 41% 60%, transparent 61%),
+    repeating-conic-gradient(var(--gold) 0deg 9deg, var(--gold-deep) 9deg 18deg);
+  box-shadow:0 8px 18px rgba(0,0,0,.25);
+}
+.rosette::after{content:"";position:absolute;inset:26px;border-radius:50%;
+  background:radial-gradient(circle at 40% 35%, var(--gold-light), var(--gold) 70%, var(--gold-deep));
+  border:2px solid var(--gold-light);}
+.badge-text{position:relative;z-index:2;font-family:"Cairo",sans-serif;font-weight:900;
+  font-size:16px;line-height:1.25;color:var(--green-deep);text-align:center;
+  text-shadow:0 1px 0 rgba(255,255,255,.4);}
+.badge-tail{position:absolute;bottom:-30px;width:22px;height:46px;background:var(--green-mid);z-index:-1;}
+.badge-tail.l{left:46px;transform:rotate(-12deg);clip-path:polygon(0 0,100% 0,100% 100%,50% 78%,0 100%);}
+.badge-tail.r{right:46px;transform:rotate(12deg);clip-path:polygon(0 0,100% 0,100% 100%,50% 78%,0 100%);}
+
+/* left-side abacus */
+.abacus{position:absolute;top:296px;left:70px;font-size:96px;z-index:6;
+  filter:drop-shadow(0 6px 8px rgba(0,0,0,.18));}
+
+/* playful numbers / blocks bottom-right */
+.numbers{position:absolute;bottom:120px;right:104px;z-index:6;display:flex;align-items:center;gap:10px;}
+.numbers .digits{font-size:54px;letter-spacing:6px;font-weight:900;}
+.blocks{display:flex;gap:5px;}
+.blk{width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:900;font-size:18px;font-family:"Cairo",sans-serif;
+  box-shadow:0 3px 5px rgba(0,0,0,.2);}
+
+/* bottom row */
+.footer{position:absolute;left:60px;right:60px;bottom:58px;z-index:6;
+  display:flex;justify-content:space-between;align-items:flex-end;}
+.foot-col{font-family:"Cairo",sans-serif;color:var(--green);font-weight:600;font-size:17px;text-align:center;min-width:210px;}
+.dots{margin-top:6px;color:var(--gold-deep);letter-spacing:2px;font-size:18px;}
+.date-line{margin-top:6px;font-size:18px;color:var(--green-deep);font-weight:700;letter-spacing:2px;}
+
+.seal{display:flex;flex-direction:column;align-items:center;gap:6px;}
+.seal-banner{
+  position:relative;background:linear-gradient(180deg,var(--green-mid),var(--green-deep));
+  color:#fff;border:1.5px solid var(--gold);border-radius:8px;
+  padding:8px 26px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;
+  box-shadow:0 4px 10px rgba(12,79,44,.3);
+}
+.seal-book{font-size:26px;line-height:1;}
+.seal-text{font-family:"Cairo",sans-serif;font-weight:700;font-size:16px;color:#fff;line-height:1.2;}
+.seal-stars{color:var(--gold-light);font-size:13px;letter-spacing:3px;}
+</style>
+</head>
+<body>
+<div class="certificate">
+  <div class="frame"></div>
+  <div class="frame-inner"></div>
+
+  <span class="corner tl">&#10086;</span>
+  <span class="corner tr">&#10086;</span>
+  <span class="corner bl">&#10086;</span>
+  <span class="corner br">&#10086;</span>
+
+  <!-- faint scattered math symbols -->
+  <span class="bg-sym" style="top:70px;right:120px;font-size:70px;color:var(--green-mid);">+</span>
+  <span class="bg-sym" style="top:120px;left:160px;font-size:64px;color:var(--gold-deep);">&minus;</span>
+  <span class="bg-sym" style="bottom:150px;right:150px;font-size:60px;color:var(--green-bright);">&divide;</span>
+  <span class="bg-sym" style="top:300px;left:120px;font-size:56px;color:var(--gold-deep);">&times;</span>
+  <span class="bg-sym" style="top:40px;right:340px;font-size:24px;color:var(--gold);">&#9733;</span>
+  <span class="bg-sym" style="top:60px;left:300px;font-size:20px;color:var(--green-mid);">&#9733;</span>
+  <span class="bg-sym" style="bottom:120px;left:300px;font-size:22px;color:var(--gold);">&#9733;</span>
+
+  <!-- champion rosette (right) -->
+  <div class="badge">
+    <div class="rosette"></div>
+    <span class="badge-tail l"></span>
+    <span class="badge-tail r"></span>
+    <div class="badge-text">بطل<br>الحساب<br>الذهني</div>
+  </div>
+
+  <!-- abacus (left) -->
+  <div class="abacus">&#129518;</div>
+
+  <!-- playful numbers + math blocks (bottom-right) -->
+  <div class="numbers">
+    <div class="blocks">
+      <span class="blk" style="background:#1c7e48;">+</span>
+      <span class="blk" style="background:#d6a82c;">&minus;</span>
+      <span class="blk" style="background:#2ea05d;">&times;</span>
+    </div>
+    <span class="digits"><span style="color:#e0a82e;">1</span><span style="color:#1c7e48;">2</span><span style="color:#2ea05d;">3</span></span>
+  </div>
+
+  <div class="content">
+    <div class="trophy">&#127942;</div>
+    <div class="title">شهادة تفوّق</div>
+    <div class="ribbon">في الحساب الذهني</div>
+
+    <div class="awarded">تُمنح هذه الشهادة للطالب المتميّز</div>
+    <div class="name">المعلّم زين</div>
+    <div class="name-rule"></div>
+
+    <div class="body">
+      تقديراً لتفوّقه وإبداعه في مهارات الحساب الذهني،<br>
+      وإظهار مستوى مميز من التركيز والسرعة والدقة.<br>
+      نتمنى له دوام النجاح والتألق وتحقيق المزيد من الإنجازات.
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="foot-col">
+      تاريخ الإصدار:
+      <div class="date-line">........ / ........ / 2026</div>
+    </div>
+    <div class="foot-col seal">
+      <div class="seal-banner">
+        <div class="seal-stars">&#9733; &#9733; &#9733;</div>
+        <div class="seal-book">&#128214;</div>
+        <div class="seal-text">برنامج الحساب الذهني</div>
+      </div>
+    </div>
+    <div class="foot-col">
+      توقيع المدرب
+      <div class="dots">.................................</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

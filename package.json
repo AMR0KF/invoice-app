@@ -1,6 +1,13 @@
 {
+  "name": "invoice-app",
+  "version": "1.0.0",
+  "private": true,
   "engines": {
-    "node": "22.x"
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "node serve.js",
+    "start": "node serve.js"
   },
   "dependencies": {
     "@sparticuz/chromium": "^148.0.0",
