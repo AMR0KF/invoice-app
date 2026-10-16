@@ -988,6 +988,80 @@
       </div>
     </article>
 
+    <article class="settings-card" id="settings-ui-feel" data-section="appearance">
+      <header class="settings-card-head">
+        <div>
+          <h2>Appearance &amp; UI Feel</h2>
+          <p>Customize accent color tint, interface density, and surface depth.</p>
+        </div>
+      </header>
+      <div class="settings-card-body">
+
+        <!-- Accent Color Theme -->
+        <div class="settings-field-block">
+          <div class="settings-block-title">
+            <span>Accent Color Theme</span>
+            <span class="settings-block-hint">Primary highlights, active folder tabs, and glow</span>
+          </div>
+          <div class="accent-swatch-group" id="accent-swatch-group">
+            <button type="button" class="accent-swatch active" data-accent="teal" onclick="setAccentTheme('teal')" title="Emerald Teal">
+              <span class="swatch-circle" style="background:#00a09d;"></span>
+              <span class="swatch-label">Teal</span>
+            </button>
+            <button type="button" class="accent-swatch" data-accent="indigo" onclick="setAccentTheme('indigo')" title="Electric Indigo">
+              <span class="swatch-circle" style="background:#6366f1;"></span>
+              <span class="swatch-label">Indigo</span>
+            </button>
+            <button type="button" class="accent-swatch" data-accent="violet" onclick="setAccentTheme('violet')" title="Cyber Violet">
+              <span class="swatch-circle" style="background:#8b5cf6;"></span>
+              <span class="swatch-label">Violet</span>
+            </button>
+            <button type="button" class="accent-swatch" data-accent="amber" onclick="setAccentTheme('amber')" title="Amber Gold">
+              <span class="swatch-circle" style="background:#f59e0b;"></span>
+              <span class="swatch-label">Amber</span>
+            </button>
+            <button type="button" class="accent-swatch" data-accent="rose" onclick="setAccentTheme('rose')" title="Rose Crimson">
+              <span class="swatch-circle" style="background:#e11d48;"></span>
+              <span class="swatch-label">Rose</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-form-grid" style="margin-top:16px;">
+          <!-- UI Density -->
+          <div class="field">
+            <div class="bilabel"><span>Interface density</span><span class="ar">كثافة الواجهة</span></div>
+            <div class="segmented-control" id="density-control">
+              <button type="button" class="seg-btn active" data-val="comfortable" onclick="setUiDensity('comfortable')">Comfortable</button>
+              <button type="button" class="seg-btn" data-val="compact" onclick="setUiDensity('compact')">Compact</button>
+            </div>
+            <div class="settings-row-hint">Compact reduces row padding and margins to view more line items on screen.</div>
+          </div>
+
+          <!-- Surface & Glassmorphism -->
+          <div class="field">
+            <div class="bilabel"><span>Surface &amp; Glass</span><span class="ar">نمط الخلفيات</span></div>
+            <div class="segmented-control" id="surface-control">
+              <button type="button" class="seg-btn active" data-val="liquid" onclick="setSurfaceStyle('liquid')">Liquid Glass</button>
+              <button type="button" class="seg-btn" data-val="solid" onclick="setSurfaceStyle('solid')">Solid Flat</button>
+            </div>
+            <div class="settings-row-hint">Liquid Glass adds backdrop blurs and mesh lighting; Solid Flat provides clean matte surfaces.</div>
+          </div>
+
+          <!-- Numeral Font -->
+          <div class="field">
+            <div class="bilabel"><span>Financial numeral font</span><span class="ar">خط الأرقام</span></div>
+            <div class="segmented-control" id="num-font-control">
+              <button type="button" class="seg-btn active" data-val="mono" onclick="setNumeralFont('mono')">Tabular Mono</button>
+              <button type="button" class="seg-btn" data-val="sans" onclick="setNumeralFont('sans')">Standard Sans</button>
+            </div>
+            <div class="settings-row-hint">Tabular Mono aligns currency figures vertically like a financial ledger.</div>
+          </div>
+        </div>
+
+      </div>
+    </article>
+
     <article class="settings-card" id="settings-companies-card" data-section="companies">
       <header class="settings-card-head">
         <div>

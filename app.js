@@ -186,6 +186,67 @@ async function toggleThemeSetting() {
   toast(theme === 'light' ? 'Light mode enabled' : 'Dark mode enabled', 'success');
 }
 
+function initUiFeelSettings() {
+  const accent = localStorage.getItem('inv_accent') || 'teal';
+  const density = localStorage.getItem('inv_density') || 'comfortable';
+  const surface = localStorage.getItem('inv_surface') || 'liquid';
+  const numFont = localStorage.getItem('inv_num_font') || 'mono';
+
+  setAccentTheme(accent, false);
+  setUiDensity(density, false);
+  setSurfaceStyle(surface, false);
+  setNumeralFont(numFont, false);
+}
+
+function setAccentTheme(theme, save = true) {
+  const valid = ['teal', 'indigo', 'violet', 'amber', 'rose'].includes(theme) ? theme : 'teal';
+  document.body.setAttribute('data-accent', valid);
+  if (save) {
+    localStorage.setItem('inv_accent', valid);
+    const names = { teal: 'Emerald Teal', indigo: 'Electric Indigo', violet: 'Cyber Violet', amber: 'Amber Gold', rose: 'Rose Crimson' };
+    toast(`Accent color set to ${names[valid] || valid}`, 'success');
+  }
+  document.querySelectorAll('#accent-swatch-group .accent-swatch').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.accent === valid);
+  });
+}
+
+function setUiDensity(density, save = true) {
+  const isCompact = density === 'compact';
+  document.body.classList.toggle('density-compact', isCompact);
+  if (save) {
+    localStorage.setItem('inv_density', isCompact ? 'compact' : 'comfortable');
+    toast(`Interface density set to ${isCompact ? 'Compact' : 'Comfortable'}`, 'success');
+  }
+  document.querySelectorAll('#density-control .seg-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.val === (isCompact ? 'compact' : 'comfortable'));
+  });
+}
+
+function setSurfaceStyle(style, save = true) {
+  const isSolid = style === 'solid';
+  document.body.classList.toggle('surface-solid', isSolid);
+  if (save) {
+    localStorage.setItem('inv_surface', isSolid ? 'solid' : 'liquid');
+    toast(`Surface style set to ${isSolid ? 'Solid Flat' : 'Liquid Glass'}`, 'success');
+  }
+  document.querySelectorAll('#surface-control .seg-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.val === (isSolid ? 'solid' : 'liquid'));
+  });
+}
+
+function setNumeralFont(font, save = true) {
+  const isSans = font === 'sans';
+  document.body.classList.toggle('font-proportional', isSans);
+  if (save) {
+    localStorage.setItem('inv_num_font', isSans ? 'sans' : 'mono');
+    toast(`Numeral font set to ${isSans ? 'Standard Sans' : 'Tabular Mono'}`, 'success');
+  }
+  document.querySelectorAll('#num-font-control .seg-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.val === (isSans ? 'sans' : 'mono'));
+  });
+}
+
 function toggleAutoIssue() {
   const on = document.getElementById('settings-auto-issue').checked;
   localStorage.setItem('inv_auto_issue', on ? '1' : '0');
@@ -223,6 +284,7 @@ function loadDocumentSettings() {
   const theme = localStorage.getItem('inv_theme') === 'light' ? 'light' : 'dark';
   const yearPrefix = localStorage.getItem('inv_year_prefix') === '1';
   applyTheme(theme);
+  initUiFeelSettings();
 
   document.getElementById('currency').value = currency;
   document.getElementById('doc-lang').value = lang;

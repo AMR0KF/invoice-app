@@ -95,6 +95,51 @@ body.light-theme {
     radial-gradient(circle at 90% 22%, rgba(13, 148, 136, .12) 0%, transparent 38%),
     radial-gradient(circle at 50% 92%, rgba(236, 72, 153, .08) 0%, transparent 45%);
 }
+
+/* ── Accent Color Palettes (Dark) ── */
+body[data-accent="teal"] {
+  --accent: #00a09d;
+  --accent2: #00c7bd;
+}
+body[data-accent="indigo"] {
+  --accent: #4f46e5;
+  --accent2: #818cf8;
+}
+body[data-accent="violet"] {
+  --accent: #7c3aed;
+  --accent2: #a78bfa;
+}
+body[data-accent="amber"] {
+  --accent: #d97706;
+  --accent2: #fbbf24;
+}
+body[data-accent="rose"] {
+  --accent: #e11d48;
+  --accent2: #fb7185;
+}
+
+/* ── Accent Color Palettes (Light) ── */
+body.light-theme[data-accent="teal"] {
+  --accent: #0f766e;
+  --accent2: #0d9488;
+}
+body.light-theme[data-accent="indigo"] {
+  --accent: #4338ca;
+  --accent2: #4f46e5;
+}
+body.light-theme[data-accent="violet"] {
+  --accent: #6d28d9;
+  --accent2: #7c3aed;
+}
+body.light-theme[data-accent="amber"] {
+  --accent: #b45309;
+  --accent2: #d97706;
+}
+body.light-theme[data-accent="rose"] {
+  --accent: #be123c;
+  --accent2: #e11d48;
+}
+
 body.light-theme ::-webkit-scrollbar-track { background: #e8edf3; }
 body.light-theme ::-webkit-scrollbar-thumb { background: #b9c1cf; }
 body.light-theme .nav-link:hover,
@@ -1295,6 +1340,196 @@ body.auth-locked #auth-cancel-btn {
 }
 .settings-row-label { font-size: 13px; font-weight: 600; color: var(--text); }
 .settings-row-hint { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+
+/* ── Appearance & UI Feel Controls ── */
+.settings-field-block {
+  margin-bottom: 12px;
+}
+.settings-block-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.settings-block-title span:first-child {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.settings-block-hint {
+  font-size: 11.5px;
+  color: var(--text2);
+}
+.accent-swatch-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.accent-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all .15s ease;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text2);
+}
+.accent-swatch:hover {
+  background: var(--surface);
+  border-color: var(--border2);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+.accent-swatch .swatch-circle {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.25);
+}
+.accent-swatch.active {
+  border-color: var(--accent2);
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface2));
+  color: var(--text);
+  font-weight: 700;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.segmented-control {
+  display: inline-flex;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+  width: 100%;
+}
+.seg-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all .15s ease;
+  text-align: center;
+}
+.seg-btn:hover {
+  color: var(--text);
+}
+.seg-btn.active {
+  background: var(--surface);
+  color: var(--accent2);
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  border: 1px solid var(--border);
+}
+body.light-theme .accent-swatch {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+body.light-theme .accent-swatch:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+body.light-theme .accent-swatch.active {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: var(--accent);
+}
+body.light-theme .segmented-control {
+  background: #eef2f6;
+  border-color: #cbd5e1;
+}
+body.light-theme .seg-btn {
+  color: #64748b;
+}
+body.light-theme .seg-btn.active {
+  background: #ffffff;
+  color: #0f766e;
+  border-color: #cbd5e1;
+}
+
+/* ── UI Density Modes ── */
+body.density-compact .container {
+  gap: 10px 14px;
+  padding: 12px 0 40px;
+}
+body.density-compact .card {
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+body.density-compact .card-title {
+  margin-bottom: 8px;
+  font-size: 10px;
+}
+body.density-compact .items-table thead th {
+  padding: 6px 6px;
+  font-size: 11px;
+}
+body.density-compact .items-table tbody td {
+  padding: 3px 2px;
+  font-size: 11.5px;
+}
+body.density-compact .items-table tbody td input {
+  padding: 4px 5px;
+  font-size: 11.5px;
+}
+body.density-compact .add-row-btn {
+  padding: 5px;
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+body.density-compact .totals {
+  padding-top: 5px;
+}
+body.density-compact .total-row {
+  padding: 2px 0;
+  font-size: 11.5px;
+}
+body.density-compact .written-box {
+  padding: 5px 8px;
+  margin-top: 4px;
+}
+body.density-compact .meta-issuer-strip {
+  padding: 5px 9px;
+  margin-bottom: 8px;
+}
+
+/* ── Surface Style Overrides ── */
+body.surface-solid {
+  background: var(--bg) !important;
+}
+body.surface-solid .card,
+body.surface-solid .topbar,
+body.surface-solid .action-bar,
+body.surface-solid .settings-card,
+body.surface-solid .invoices-page,
+body.surface-solid .company-popover-shell {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ── Numeral Font Overrides ── */
+body.font-proportional .items-table tbody td input[type="number"],
+body.font-proportional .items-table tbody td.num,
+body.font-proportional .money-cell,
+body.font-proportional .total-row .amt,
+body.font-proportional .summary-label + strong,
+body.font-proportional .currency-val,
+body.font-proportional .num-mono {
+  font-family: inherit !important;
+  font-variant-numeric: normal !important;
+}
 
 .company-search-wrap {
   position: relative;
