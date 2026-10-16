@@ -176,6 +176,7 @@ function applyTheme(theme) {
   document.body.classList.toggle('light-theme', normalized === 'light');
   const toggle = document.getElementById('settings-theme-toggle');
   if (toggle) toggle.checked = normalized === 'light';
+  if (typeof updateSidebarThemeUI === 'function') updateSidebarThemeUI();
 }
 
 async function toggleThemeSetting() {
@@ -889,35 +890,65 @@ function discardDraft(local_id) {
   toast('Draft discarded', 'success');
 }
 
-// Mobile slide-down nav drawer.
+// Mobile Off-Canvas Sidebar
 function toggleMobileNav() {
-  const d = document.getElementById('mobile-nav-drawer');
-  if (!d) return;
-  d.hidden = !d.hidden;
-  const btn = document.getElementById('topbar-menu-btn');
-  if (btn) btn.setAttribute('aria-expanded', String(!d.hidden));
-  // Highlight the active route in the drawer when opening.
-  if (!d.hidden) {
+  const sidebar = document.getElementById('mobile-sidebar');
+  const backdrop = document.getElementById('mobile-sidebar-backdrop');
+  if (!sidebar) return;
+  const isOpen = sidebar.classList.contains('open');
+  if (isOpen) {
+    closeMobileNav();
+  } else {
+    sidebar.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+    document.body.classList.add('mobile-sidebar-active');
+    const btn = document.getElementById('topbar-menu-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    // Highlight the active route in the sidebar when opening
     const active = navHighlightFor(currentRouteName());
-    d.querySelectorAll('.mobile-nav-item').forEach(el => {
+    sidebar.querySelectorAll('.mobile-nav-item').forEach(el => {
       el.classList.toggle('active', el.dataset.route === active);
     });
+    // Sync active company
+    const topLabel = document.getElementById('topbar-company-label');
+    const sideLabel = document.getElementById('sidebar-company-label');
+    if (topLabel && sideLabel) sideLabel.textContent = topLabel.textContent;
+    // Sync theme label
+    updateSidebarThemeUI();
   }
 }
+
 function closeMobileNav() {
-  const d = document.getElementById('mobile-nav-drawer');
-  if (d) d.hidden = true;
+  const sidebar = document.getElementById('mobile-sidebar');
+  const backdrop = document.getElementById('mobile-sidebar-backdrop');
+  if (sidebar) sidebar.classList.remove('open');
+  if (backdrop) backdrop.classList.remove('open');
+  document.body.classList.remove('mobile-sidebar-active');
   const btn = document.getElementById('topbar-menu-btn');
   if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
-// Tapping outside the open drawer closes it.
-document.addEventListener('click', (e) => {
-  const d = document.getElementById('mobile-nav-drawer');
-  if (!d || d.hidden) return;
-  const btn = document.getElementById('topbar-menu-btn');
-  if (d.contains(e.target) || (btn && btn.contains(e.target))) return;
-  closeMobileNav();
+function updateSidebarThemeUI() {
+  const isLight = document.body.classList.contains('light-theme');
+  const icon = document.getElementById('sidebar-theme-icon');
+  const text = document.getElementById('sidebar-theme-text');
+  if (icon) icon.textContent = isLight ? '☀️' : '🌙';
+  if (text) text.textContent = isLight ? 'Light Mode' : 'Dark Mode';
+}
+
+function toggleSidebarTheme() {
+  const isCurrentlyLight = document.body.classList.contains('light-theme');
+  const nextTheme = isCurrentlyLight ? 'dark' : 'light';
+  localStorage.setItem('inv_theme', nextTheme);
+  applyTheme(nextTheme);
+  updateSidebarThemeUI();
+  saveRemoteDocumentSettings().catch(() => {});
+  toast(nextTheme === 'light' ? 'Light mode enabled' : 'Dark mode enabled', 'success');
+}
+
+// Close on escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeMobileNav();
 });
 
 window.addEventListener('hashchange', routeView);
@@ -2980,6 +3011,8 @@ function renderIssueCompanyOptions() {
   const compLabel = comp ? (comp.name || 'Company') : 'Individual';
   const topLabel = document.getElementById('topbar-company-label');
   if (topLabel) topLabel.textContent = compLabel;
+  const sideLabel = document.getElementById('sidebar-company-label');
+  if (sideLabel) sideLabel.textContent = compLabel;
   const metaLabel = document.getElementById('meta-issuer-name');
   if (metaLabel) metaLabel.textContent = compLabel;
   if (badgeText) badgeText.textContent = compLabel;
@@ -3094,6 +3127,8 @@ function applySelectedCompany(id) {
   const compLabel = company ? (company.name || 'Company') : 'Individual';
   const topLabel = document.getElementById('topbar-company-label');
   if (topLabel) topLabel.textContent = compLabel;
+  const sideLabel = document.getElementById('sidebar-company-label');
+  if (sideLabel) sideLabel.textContent = compLabel;
   const metaLabel = document.getElementById('meta-issuer-name');
   if (metaLabel) metaLabel.textContent = compLabel;
   const badgeText = document.getElementById('issuer-badge-text');

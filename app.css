@@ -51,7 +51,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Segoe UI', Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   min-height: 100vh;
   padding: 0 0 60px;
@@ -2424,18 +2424,47 @@ body.light-theme .status-side-actions .ghost-btn.danger { color: #b42318; }
     padding-bottom: 128px;
   }
   .topbar {
-    padding: 10px 12px;
+    padding: 0 12px;
+    height: 56px;
     gap: 8px;
+    display: flex;
+    align-items: center;
   }
-  /* Mobile: drop the segmented nav pill (took a whole row of vertical space).
-     Settings is reached via the gear icon on the right side of the topbar. */
+  .topbar-menu-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform 0.1s ease, background 0.15s ease;
+  }
+  .topbar-menu-btn:active {
+    background: var(--surface);
+    transform: scale(0.92);
+  }
   .topbar-nav {
-    display: none;
+    display: none !important;
   }
-  /* Tighter brand on mobile — drop the Arabic subtitle so the header reads
-     as a single clean line. Logo stays one line, never wraps. */
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
   .topbar-logo {
-    font-size: 16px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .topbar-sub {
     display: none;
@@ -2444,30 +2473,51 @@ body.light-theme .status-side-actions .ghost-btn.danger { color: #b42318; }
     margin-left: auto;
     gap: 6px;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
   }
-  /* Truncate aggressively on mobile so the signed-in email/name shows a green
-     status dot + a tight ellipsis, never a 2-line wrap. */
-  .auth-pill {
-    max-width: 120px;
+  .company-summon-btn {
     padding: 6px 10px;
     font-size: 12px;
+    max-width: 130px;
+    border-radius: 10px;
+  }
+  .company-summon-btn .comp-name {
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .auth-pill {
+    max-width: 95px;
+    padding: 6px 9px;
+    font-size: 11px;
+    border-radius: 10px;
   }
   .auth-signout {
     padding: 6px 8px;
+    border-radius: 10px;
   }
   #inv-counter {
-    font-size: 10px;
-    color: var(--text3);
+    display: none;
   }
   body.on-settings .topbar-settings-btn {
     color: var(--accent2);
   }
   .container {
-    padding: 10px 10px 0;
+    padding: 12px 14px 110px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
   }
   .card {
-    padding: 12px;
-    margin-bottom: 10px;
+    padding: 14px !important;
+    margin-bottom: 12px !important;
+    border-radius: 14px !important;
+    border: 1px solid var(--border) !important;
+    background: var(--surface) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
   }
   .meta-card .g3,
   .g2,
@@ -3378,56 +3428,247 @@ body.on-invoice-view {
    (home, customers, companies, financial)
    ────────────────────────────────────────────────────────────────────*/
 
-/* Hamburger menu button — hidden on desktop, shown on mobile.
-   Wired by index.html#topbar-menu-btn. */
 /* Hamburger button: hidden on desktop, shown on mobile. */
 .topbar-menu-btn { display: none; }
 
-/* Mobile slide-down drawer. Visibility is driven SOLELY by the `hidden`
-   attribute (toggled in JS) — the global `[hidden] { display:none }`
-   rule hides it, and `:not([hidden])` shows it as a flex column. No
-   base `display:none` here, or it would override the shown state. */
-.mobile-nav-drawer {
+/* ── Modern Off-Canvas Mobile Navigation Sidebar ───────────────── */
+.mobile-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2490;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s;
+}
+.mobile-sidebar-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.mobile-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(310px, 84vw);
+  height: 100vh;
+  height: 100dvh;
+  z-index: 2500;
+  background: #11141c;
+  background: var(--surface);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 20px 0 60px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: max(16px, env(safe-area-inset-top, 16px)) 16px max(16px, env(safe-area-inset-bottom, 16px));
+}
+.mobile-sidebar.open {
+  transform: translateX(0);
+}
+
+body.light-theme .mobile-sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  box-shadow: 20px 0 50px rgba(15, 23, 42, 0.16);
+}
+
+.mobile-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar-brand-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-brand-logo {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.sidebar-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(0, 160, 157, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(0, 160, 157, 0.3);
+}
+.sidebar-close-btn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text2);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sidebar-close-btn:active {
+  background: var(--surface2);
+  color: var(--text);
+  transform: scale(0.92);
+}
+
+.sidebar-company-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  margin-bottom: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sidebar-company-card:active {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.s-comp-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.s-comp-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
   gap: 2px;
-  position: fixed;
-  top: 54px;
-  left: 10px;
-  right: 10px;
-  z-index: 1200;
-  padding: 8px;
-  border-radius: 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: 0 16px 48px rgba(0,0,0,.45);
 }
-.mobile-nav-drawer:not([hidden]) { display: flex; }
+.s-comp-sub {
+  font-size: 10px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+.s-comp-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s-comp-arrow {
+  color: var(--text3);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.mobile-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
 .mobile-nav-item {
   appearance: none;
   background: transparent;
   border: 0;
-  text-align: left;
-  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 11px;
   font: inherit;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text);
-  border-radius: 10px;
+  color: var(--text2);
+  text-align: left;
   cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, transform 0.1s ease;
 }
-.mobile-nav-item:active { background: var(--surface2); }
-.mobile-nav-item.active { background: var(--accent); color: #fff; }
+.mobile-nav-item svg {
+  color: var(--text3);
+  transition: color 0.14s ease;
+  flex-shrink: 0;
+}
+.mobile-nav-item:active {
+  background: var(--surface2);
+  color: var(--text);
+  transform: scale(0.98);
+}
+.mobile-nav-item.active {
+  background: var(--accent);
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 4px 14px -2px rgba(0, 160, 157, 0.45);
+}
+.mobile-nav-item.active svg {
+  color: #ffffff !important;
+}
 
-/* Mobile breakpoint matches the app's nav-hide breakpoint (720px): the
-   full segmented nav pill is hidden there, so the hamburger takes over. */
-@media (max-width: 720px) {
-  .topbar-menu-btn { display: inline-flex; }
+.sidebar-nav-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 10px 4px;
 }
-/* Above the breakpoint the full nav pill is visible, so the drawer +
-   hamburger never show even if the hidden attribute were removed. */
-@media (min-width: 721px) {
-  .mobile-nav-drawer { display: none !important; }
-  .topbar-menu-btn   { display: none !important; }
+
+.mobile-sidebar-footer {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sidebar-footer-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+.sidebar-footer-btn:active {
+  background: var(--surface);
+}
+
+/* Hide on desktop, show on mobile */
+@media (min-width: 769px) {
+  .mobile-sidebar-backdrop,
+  .mobile-sidebar,
+  .topbar-menu-btn {
+    display: none !important;
+  }
+}
+@media (max-width: 768px) {
+  .topbar-menu-btn {
+    display: inline-flex !important;
+  }
 }
 
 /* ── Home page ───────────────────────────────────────────────────── */
